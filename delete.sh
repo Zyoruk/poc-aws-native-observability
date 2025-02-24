@@ -1,0 +1,2 @@
+aws cloudformation delete-stack --region us-east-2  --profile LuisSimonEncora --stack-name coe-aws-obs-poc-stack
+aws ec2 delete-key-pair --region us-east-2  --profile LuisSimonEncora --key-name EC2KeyName
