@@ -11,4 +11,6 @@ Holds the configuration for COE AWS Observability native deployment.
     - `<PROFILE_NAME>` is the AWS CLI profile name
     - `<REGION>` is the AWS region to deploy the resources
 ### To delete the resources
-3. `$ sh delete.sh`
+3. `$ sh delete.sh <PROFILE_NAME> <REGION>` where:
+    - `<PROFILE_NAME>` is the AWS CLI profile name
+    - `<REGION>` is the AWS region to deploy the resources
