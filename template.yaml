@@ -471,6 +471,23 @@ Resources:
   ##############################
   # Container Fleet: Launch Template for ASG Instances (Using CloudWatch Agent)
   ##############################
+  EC2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EC2InstanceRole
   ContainerFleetLaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
     Properties:
@@ -481,11 +498,16 @@ Resources:
         KeyName: !Ref KeyName
         SecurityGroupIds:
           - !Ref ContainerFleetSecurityGroup
+        IamInstanceProfile:
+          Name: !Ref EC2InstanceProfile
         UserData: !Base64 |
           #!/bin/bash
           yum update -y
           # Install CloudWatch Agent
-          yum install -y amazon-cloudwatch-agent
+          yum install -y amazon-cloudwatch-agent amazon-ssm-agent
+          # Start SSM Agent
+          systemctl enable amazon-ssm-agent
+          systemctl start amazon-ssm-agent
           # Create CloudWatch Agent configuration file
           cat <<'EOF' > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
           {
