@@ -1,3 +1,4 @@
+#!/bin/bash
 # Request for profile and region as flags. Example: sh run.sh LuisSimonEncora us-east-2
 if [ $# -eq 0 ]; then
   echo "No arguments supplied"
@@ -29,16 +30,11 @@ echo "Region: $region"
 # Create an EC2 key pair named "EC2KeyName" and save the private key to a file.
 # If it already exists, delete it first.
 aws ec2 delete-key-pair --region $region  --profile $profile --key-name EC2KeyName
-# if the file exists locally
-if [ -f EC2KeyName.pem ]; then
-  rm EC2KeyName.pem
-fi
+
+rm EC2KeyName.pem
 
 # Create the key pair and save the private key to a file.
 aws ec2 create-key-pair  --region $region  --profile $profile --key-name EC2KeyName --query 'KeyMaterial'  --output text > EC2KeyName.pem
-
-# Set the permissions of the private key file to read-only.
-chmod 400 EC2KeyName.pem
 
 # Deploy the CloudFormation stack using the updated template file "observability-poc.yaml".
 aws cloudformation deploy \

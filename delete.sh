@@ -1,3 +1,4 @@
+#!/bin/bash
 # Request for profile and region as flags. Example: sh run.sh LuisSimonEncora us-east-2
 if [ $# -eq 0 ]; then
   echo "No arguments supplied"
@@ -19,6 +20,7 @@ if [ -z "$2" ]; then
   echo "Region is empty"
   exit 1
 fi
+
 profile=$1
 region=$2
 
