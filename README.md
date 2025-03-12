@@ -1,6 +1,6 @@
 # Observability POC CloudFormation Template
 
-This repository contains a CloudFormation template that provisions a Proof-of-Concept (POC) observability solution on AWS. The template sets up a compact, dedicated VPC and deploys several key resources:
+This repository contains CloudFormation templates that provision a Proof-of-Concept (POC) observability solution on AWS. The templates set up a compact, dedicated VPC and deploy several key resources:
 
 - **AWS Managed Grafana Workspace:**  
   Pre-configured with a CloudWatch data source to visualize metrics from various AWS services.
@@ -67,6 +67,17 @@ This repository contains a CloudFormation template that provisions a Proof-of-Co
 
 ---
 
+### 4. EC2 Grafana Instance
+
+- **Grafana EC2 Instance:**  
+  An EC2 instance running Grafana, pre-configured to visualize metrics from CloudWatch.
+  - **Grafana EC2 Role:** Grants the necessary permissions to the EC2 instance to read metrics from CloudWatch.
+  - **Grafana Security Group:** Controls inbound and outbound traffic for the Grafana instance.
+
+> **Note:** The EC2 Grafana instance is intended to be a temporary solution. The preferred approach is to use the AWS Managed Grafana for a fully managed and scalable observability solution.
+
+---
+
 ## Deployment Instructions
 
 ### Prerequisites
@@ -75,9 +86,10 @@ This repository contains a CloudFormation template that provisions a Proof-of-Co
 ### Steps
 1. make sure to login to AWS in the CLI
 2. `$ cd coe-aws-observability`
-3. `$ sh run.sh <PROFILE_NAME> <REGION>` where:
+3. `$ sh run.sh <PROFILE_NAME> <REGION> <TEMPLATE>` where:
     - `<PROFILE_NAME>` is the AWS CLI profile name
     - `<REGION>` is the AWS region to deploy the resources
+    - `<TEMPLATE>` is the path to the CloudFormation template file (e.g., `template.yaml` or `template-ec2-grafana.yaml`)
 
 ### To delete the resources
 3. `$ sh delete.sh <PROFILE_NAME> <REGION>` where:
