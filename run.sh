@@ -49,4 +49,5 @@ aws cloudformation deploy \
   --template-file $template \
   --stack-name coe-aws-obs-poc-stack \
   --parameter-overrides KeyName=EC2KeyName InstanceType=t3.micro \
-  --capabilities CAPABILITY_NAMED_IAM
+  --capabilities CAPABILITY_NAMED_IAM \
+  --tags POC=Observability
