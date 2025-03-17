@@ -677,6 +677,18 @@ Resources:
           # Install Grafana
           yum install -y grafana
 
+          # Configure Grafana SMTP settings
+          cat <<EOF >> /etc/grafana/grafana.ini
+          [smtp]
+          enabled = true
+          host = email-smtp.us-east-1.amazonaws.com:587
+          user = ${SESIAMUserAccessKey}
+          password = ${SESIAMUserAccessKey}
+          skip_verify = true
+          from_address = luis.simon@encora.com
+          from_name = Grafana
+          EOF
+
           # Reload systemd manager configuration
           systemctl daemon-reload
 
