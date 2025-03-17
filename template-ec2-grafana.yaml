@@ -635,63 +635,75 @@ Resources:
           ToPort: 3000
           CidrIp: 0.0.0.0/0
 
+  # Grafana Launch Template
+  COEAWSOBSGrafanaLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: "COE-AWS-OBS-Grafana-LT"
+      LaunchTemplateData:
+        InstanceType: !Ref InstanceType
+        SecurityGroupIds:
+          - !Ref COEAWSOBSGrafanaSecurityGroup
+        KeyName: !Ref KeyName
+        IamInstanceProfile:
+          Name: !Ref COEAWSOBSGrafanaInstanceProfile
+        ImageId: !FindInMap
+          - RegionMap
+          - !Ref 'AWS::Region'
+          - AMI
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash
+            # Update all installed packages
+            yum update -y
+
+            # Add Grafana repository
+            cat <<EOF > /etc/yum.repos.d/grafana.repo
+            [grafana]
+            name=grafana
+            baseurl=https://rpm.grafana.com
+            repo_gpgcheck=1
+            enabled=1
+            gpgcheck=1
+            gpgkey=https://rpm.grafana.com/gpg.key
+            sslverify=1
+            sslcacert=/etc/pki/tls/certs/ca-bundle.crt
+            EOF
+
+            # Install Grafana
+            yum install -y grafana
+
+            # Configure Grafana SMTP settings
+            cat <<EOF >> /etc/grafana/grafana.ini
+            [smtp]
+            enabled = true
+            host = email-smtp.us-east-1.amazonaws.com:587
+            user = ${COEAWSOBSSESIAMUser}
+            password = ${COEAWSOBSSESIAMUserAccessKey}
+            skip_verify = true
+            from_address = luis.simon@encora.com
+            from_name = Grafana
+            EOF
+
+            # Reload systemd manager configuration
+            systemctl daemon-reload
+
+            # Enable and start Grafana server
+            systemctl enable grafana-server
+            systemctl start grafana-server
+
+
+  # Grafana Instance using Launch Template
   COEAWSOBSGrafanaInstance:
     Type: AWS::EC2::Instance
-    DependsOn: COEAWSOBSSESIAMUser
     Properties:
-      InstanceType: !Ref InstanceType
-      SecurityGroupIds:
-        - !Ref COEAWSOBSGrafanaSecurityGroup
-      KeyName: !Ref KeyName
-      IamInstanceProfile: !Ref COEAWSOBSGrafanaInstanceProfile
-      ImageId: !FindInMap
-        - RegionMap
-        - !Ref 'AWS::Region'
-        - AMI
+      LaunchTemplate:
+        LaunchTemplateId: !Ref COEAWSOBSGrafanaLaunchTemplate
+        Version: !GetAtt COEAWSOBSGrafanaLaunchTemplate.LatestVersionNumber
       SubnetId: !Ref COEAWSOBSPublicSubnet1
       Tags:
         - Key: Name
           Value: "COE-AWS-OBS-Grafana-Instance"
-      UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash
-          # Update all installed packages
-          yum update -y
-
-          # Add Grafana repository
-          cat <<EOF > /etc/yum.repos.d/grafana.repo
-          [grafana]
-          name=grafana
-          baseurl=https://rpm.grafana.com
-          repo_gpgcheck=1
-          enabled=1
-          gpgcheck=1
-          gpgkey=https://rpm.grafana.com/gpg.key
-          sslverify=1
-          sslcacert=/etc/pki/tls/certs/ca-bundle.crt
-          EOF
-
-          # Install Grafana
-          yum install -y grafana
-
-          # Configure Grafana SMTP settings
-          cat <<EOF >> /etc/grafana/grafana.ini
-          [smtp]
-          enabled = true
-          host = email-smtp.us-east-1.amazonaws.com:587
-          user = ${COEAWSOBSSESIAMUser}
-          password = ${COEAWSOBSSESIAMUserAccessKey}
-          skip_verify = true
-          from_address = luis.simon@encora.com
-          from_name = Grafana
-          EOF
-
-          # Reload systemd manager configuration
-          systemctl daemon-reload
-
-          # Enable and start Grafana server
-          systemctl enable grafana-server
-          systemctl start grafana-server
 
   ##################################
   # CloudWatch Alarms
