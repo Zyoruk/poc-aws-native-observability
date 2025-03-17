@@ -25,7 +25,7 @@ Resources:
   ##################################
   # VPC and Networking Resources (Compact Design)
   ##################################
-  VPC:
+  COEAWSOBSVPC:
     Type: AWS::EC2::VPC
     Properties:
       CidrBlock: 10.0.0.0/24
@@ -33,185 +33,179 @@ Resources:
       EnableDnsHostnames: true
       Tags:
         - Key: Name
-          Value: "POC-VPC"
+          Value: "COE-AWS-OBS-VPC"
 
-  InternetGateway:
+  COEAWSOBSInternetGateway:
     Type: AWS::EC2::InternetGateway
     Properties:
       Tags:
         - Key: Name
-          Value: "POC-IGW"
+          Value: "COE-AWS-OBS-IGW"
 
-  VPCGatewayAttachment:
+  COEAWSOBSVPCGatewayAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
     Properties:
-      VpcId: !Ref VPC
-      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref COEAWSOBSVPC
+      InternetGatewayId: !Ref COEAWSOBSInternetGateway
 
-  # Public Subnets (for container fleet) – each /27
-  PublicSubnet1:
+  COEAWSOBSPublicSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
-      VpcId: !Ref VPC
+      VpcId: !Ref COEAWSOBSVPC
       CidrBlock: 10.0.0.0/27
       AvailabilityZone: !Select [ 0, !GetAZs "" ]
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
-          Value: "POC-PublicSubnet1"
+          Value: "COE-AWS-OBS-PublicSubnet1"
 
-  PublicSubnet2:
+  COEAWSOBSPublicSubnet2:
     Type: AWS::EC2::Subnet
     Properties:
-      VpcId: !Ref VPC
+      VpcId: !Ref COEAWSOBSVPC
       CidrBlock: 10.0.0.32/27
       AvailabilityZone: !Select [ 1, !GetAZs "" ]
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
-          Value: "POC-PublicSubnet2"
+          Value: "COE-AWS-OBS-PublicSubnet2"
 
-  # Private Subnets (for Lambda) – each /27
-  PrivateSubnet1:
+  COEAWSOBSPrivateSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
-      VpcId: !Ref VPC
+      VpcId: !Ref COEAWSOBSVPC
       CidrBlock: 10.0.0.64/27
       AvailabilityZone: !Select [ 0, !GetAZs "" ]
       MapPublicIpOnLaunch: false
       Tags:
         - Key: Name
-          Value: "POC-PrivateSubnet1"
+          Value: "COE-AWS-OBS-PrivateSubnet1"
 
-  PrivateSubnet2:
+  COEAWSOBSPrivateSubnet2:
     Type: AWS::EC2::Subnet
     Properties:
-      VpcId: !Ref VPC
+      VpcId: !Ref COEAWSOBSVPC
       CidrBlock: 10.0.0.96/27
       AvailabilityZone: !Select [ 1, !GetAZs "" ]
       MapPublicIpOnLaunch: false
       Tags:
         - Key: Name
-          Value: "POC-PrivateSubnet2"
+          Value: "COE-AWS-OBS-PrivateSubnet2"
 
-  # Public Route Table and Association
-  PublicRouteTable:
+  COEAWSOBSPublicRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
-      VpcId: !Ref VPC
+      VpcId: !Ref COEAWSOBSVPC
       Tags:
         - Key: Name
-          Value: "POC-PublicRT"
+          Value: "COE-AWS-OBS-PublicRT"
 
-  PublicRoute:
+  COEAWSOBSPublicRoute:
     Type: AWS::EC2::Route
-    DependsOn: VPCGatewayAttachment
+    DependsOn: COEAWSOBSVPCGatewayAttachment
     Properties:
-      RouteTableId: !Ref PublicRouteTable
+      RouteTableId: !Ref COEAWSOBSPublicRouteTable
       DestinationCidrBlock: 0.0.0.0/0
-      GatewayId: !Ref InternetGateway
+      GatewayId: !Ref COEAWSOBSInternetGateway
 
-  PublicSubnet1RouteTableAssociation:
+  COEAWSOBSPublicSubnet1RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      SubnetId: !Ref PublicSubnet1
-      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref COEAWSOBSPublicSubnet1
+      RouteTableId: !Ref COEAWSOBSPublicRouteTable
 
-  PublicSubnet2RouteTableAssociation:
+  COEAWSOBSPublicSubnet2RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      SubnetId: !Ref PublicSubnet2
-      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref COEAWSOBSPublicSubnet2
+      RouteTableId: !Ref COEAWSOBSPublicRouteTable
 
-  # NAT Gateway to enable outbound connectivity from private subnets
-  NatEIP:
+  COEAWSOBSNatEIP:
     Type: AWS::EC2::EIP
-    DependsOn: VPCGatewayAttachment
+    DependsOn: COEAWSOBSVPCGatewayAttachment
     Properties:
       Domain: vpc
 
-  NatGateway:
+  COEAWSOBSNatGateway:
     Type: AWS::EC2::NatGateway
-    DependsOn: VPCGatewayAttachment
+    DependsOn: COEAWSOBSVPCGatewayAttachment
     Properties:
-      AllocationId: !GetAtt NatEIP.AllocationId
-      SubnetId: !Ref PublicSubnet1
+      AllocationId: !GetAtt COEAWSOBSNatEIP.AllocationId
+      SubnetId: !Ref COEAWSOBSPublicSubnet1
       Tags:
         - Key: Name
-          Value: "POC-NATGateway"
+          Value: "COE-AWS-OBS-NATGateway"
 
-  # Private Route Table and Association
-  PrivateRouteTable:
+  COEAWSOBSPrivateRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
-      VpcId: !Ref VPC
+      VpcId: !Ref COEAWSOBSVPC
       Tags:
         - Key: Name
-          Value: "POC-PrivateRT"
+          Value: "COE-AWS-OBS-PrivateRT"
 
-  PrivateRoute:
+  COEAWSOBSPrivateRoute:
     Type: AWS::EC2::Route
     Properties:
-      RouteTableId: !Ref PrivateRouteTable
+      RouteTableId: !Ref COEAWSOBSPrivateRouteTable
       DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NatGateway
+      NatGatewayId: !Ref COEAWSOBSNatGateway
 
-  PrivateSubnet1RouteTableAssociation:
+  COEAWSOBSPrivateSubnet1RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      SubnetId: !Ref PrivateSubnet1
-      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref COEAWSOBSPrivateSubnet1
+      RouteTableId: !Ref COEAWSOBSPrivateRouteTable
 
-  PrivateSubnet2RouteTableAssociation:
+  COEAWSOBSPrivateSubnet2RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      SubnetId: !Ref PrivateSubnet2
-      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref COEAWSOBSPrivateSubnet2
+      RouteTableId: !Ref COEAWSOBSPrivateRouteTable
 
   ##############################
   # API Gateway
   ##############################
-  ApiGatewayRestApi:
+  COEAWSOBSApiGatewayRestApi:
     Type: AWS::ApiGateway::RestApi
     Properties:
       Name: "coe-aws-obs-apigateway-cf"
       Description: "Sample API Gateway for Lambda Integration"
       FailOnWarnings: true
 
-  ApiGatewayResource:
+  COEAWSOBSApiGatewayResource:
     Type: AWS::ApiGateway::Resource
     Properties:
-      ParentId: !GetAtt ApiGatewayRestApi.RootResourceId
-      RestApiId: !Ref ApiGatewayRestApi
+      ParentId: !GetAtt COEAWSOBSApiGatewayRestApi.RootResourceId
+      RestApiId: !Ref COEAWSOBSApiGatewayRestApi
       PathPart: "test"
 
-  ApiGatewayMethod:
+  COEAWSOBSApiGatewayMethod:
     Type: AWS::ApiGateway::Method
     Properties:
-      RestApiId: !Ref ApiGatewayRestApi
-      ResourceId: !Ref ApiGatewayResource
+      RestApiId: !Ref COEAWSOBSApiGatewayRestApi
+      ResourceId: !Ref COEAWSOBSApiGatewayResource
       HttpMethod: ANY
       AuthorizationType: NONE
       Integration:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
-        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SampleLambdaFunction.Arn}/invocations
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${COEAWSOBSSampleLambdaFunction.Arn}/invocations
 
-  ApiGatewayDeployment:
+  COEAWSOBSApiGatewayDeployment:
     Type: AWS::ApiGateway::Deployment
-    DependsOn: ApiGatewayMethod
+    DependsOn: COEAWSOBSApiGatewayMethod
     Properties:
-      RestApiId: !Ref ApiGatewayRestApi
+      RestApiId: !Ref COEAWSOBSApiGatewayRestApi
       StageName: "dev"
 
-  
   ##############################
   # Sample Lambda Function with VPC Config
   ##############################
-  LambdaExecutionRole:
+  COEAWSOBSLambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: "POC-Lambda-Execution-Role"
+      RoleName: "COE-AWS-OBS-Lambda-Execution-Role"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -223,11 +217,11 @@ Resources:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
         - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
 
-  LambdaSecurityGroup:
+  COEAWSOBSLambdaSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: "Security group for Lambda in VPC"
-      VpcId: !Ref VPC
+      VpcId: !Ref COEAWSOBSVPC
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 0
@@ -238,15 +232,15 @@ Resources:
           CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
-          Value: "POC-Lambda-SG"
+          Value: "COE-AWS-OBS-Lambda-SG"
 
-  SampleLambdaFunction:
+  COEAWSOBSSampleLambdaFunction:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: "POC-SampleLambda"
+      FunctionName: "COE-AWS-OBS-SampleLambda"
       Handler: index.handler
       Runtime: python3.12
-      Role: !GetAtt LambdaExecutionRole.Arn
+      Role: !GetAtt COEAWSOBSLambdaExecutionRole.Arn
       Layers:
         - arn:aws:lambda:us-east-2:017000801446:layer:AWSLambdaPowertoolsPythonV3-python312-x86_64:7
       Code:
@@ -408,26 +402,26 @@ Resources:
 
       VpcConfig:
         SubnetIds:
-          - !Ref PrivateSubnet1
-          - !Ref PrivateSubnet2
+          - !Ref COEAWSOBSPrivateSubnet1
+          - !Ref COEAWSOBSPrivateSubnet2
         SecurityGroupIds:
-          - !Ref LambdaSecurityGroup
+          - !Ref COEAWSOBSLambdaSecurityGroup
 
-  LambdaPermissionForApiGateway:
+  COEAWSOBSLambdaPermissionForApiGateway:
     Type: AWS::Lambda::Permission
     Properties:
       Action: lambda:InvokeFunction
-      FunctionName: !Ref SampleLambdaFunction
+      FunctionName: !Ref COEAWSOBSSampleLambdaFunction
       Principal: apigateway.amazonaws.com
   
-  ##############################
+   ##############################
   # Container Fleet: Security Group
   ##############################
-  ContainerFleetSecurityGroup:
+  COEAWSOBSContainerFleetSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: "Security group for container fleet instances"
-      VpcId: !Ref VPC
+      VpcId: !Ref COEAWSOBSVPC
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 22
@@ -438,12 +432,12 @@ Resources:
           CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
-          Value: "POC-ContainerFleet-SG"
+          Value: "COE-AWS-OBS-ContainerFleet-SG"
 
   ##############################
   # Container Fleet: Launch Template for ASG Instances (Using CloudWatch Agent)
   ##############################
-  EC2InstanceRole:
+  COEAWSOBSEC2InstanceRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -456,26 +450,27 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
         - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
-  EC2InstanceProfile:
+
+  COEAWSOBSEC2InstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
       Roles:
-        - !Ref EC2InstanceRole
-  ContainerFleetLaunchTemplate:
+        - !Ref COEAWSOBSEC2InstanceRole
+
+  COEAWSOBSContainerFleetLaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
     Properties:
-      LaunchTemplateName: "POC-ContainerFleet-LT"
+      LaunchTemplateName: "COE-AWS-OBS-ContainerFleet-LT"
       LaunchTemplateData:
         InstanceType: !Ref InstanceType
-        ImageId: ami-0fc82f4dabc05670b # Updated valid AMI
         ImageId: !FindInMap
           - RegionMap
           - !Ref 'AWS::Region'
           - AMI
         SecurityGroupIds:
-          - !Ref ContainerFleetSecurityGroup
+          - !Ref COEAWSOBSContainerFleetSecurityGroup
         IamInstanceProfile:
-          Name: !Ref EC2InstanceProfile
+          Name: !Ref COEAWSOBSEC2InstanceProfile
         UserData: !Base64 |
           #!/bin/bash
           yum update -y
@@ -531,31 +526,31 @@ Resources:
   ##############################
   # Container Fleet: Auto Scaling Group
   ##############################
-  ContainerFleetASG:
+  COEAWSOBSContainerFleetASG:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
-      AutoScalingGroupName: "POC-ContainerFleet-ASG"
+      AutoScalingGroupName: "COE-AWS-OBS-ContainerFleet-ASG"
       LaunchTemplate:
-        LaunchTemplateId: !Ref ContainerFleetLaunchTemplate
-        Version: !GetAtt ContainerFleetLaunchTemplate.LatestVersionNumber
+        LaunchTemplateId: !Ref COEAWSOBSContainerFleetLaunchTemplate
+        Version: !GetAtt COEAWSOBSContainerFleetLaunchTemplate.LatestVersionNumber
       MinSize: '1'
       MaxSize: '3'
       DesiredCapacity: '1'
       VPCZoneIdentifier:
-        - !Ref PublicSubnet1
-        - !Ref PublicSubnet2
+        - !Ref COEAWSOBSPublicSubnet1
+        - !Ref COEAWSOBSPublicSubnet2
       Tags:
         - Key: Name
-          Value: "POC-ContainerFleet"
+          Value: "COE-AWS-OBS-ContainerFleet"
           PropagateAtLaunch: true
 
   ##############################
   # Sample DynamoDB Table
   ##############################
-  SampleDynamoDBTable:
+  COEAWSOBSSampleDynamoDBTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: "POC-DynamoDB-Table"
+      TableName: "COE-AWS-OBS-DynamoDB-Table"
       AttributeDefinitions:
         - AttributeName: "Id"
           AttributeType: "S"
@@ -567,10 +562,10 @@ Resources:
   ##################################
   # Grafana Instance
   ##################################
-  GrafanaEC2Role:
+  COEAWSOBSGrafanaEC2Role:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: "GrafanaEC2Role"
+      RoleName: "COE-AWS-OBS-GrafanaEC2Role"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -582,7 +577,7 @@ Resources:
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
         - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
       Policies:
-        - PolicyName: GrafanaCloudWatchAccess
+        - PolicyName: COEAWSOBSGrafanaCloudWatchAccess
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
@@ -618,16 +613,18 @@ Resources:
                 Action:
                   - "tag:GetResources"
                 Resource: "*"
-  GrafanaInstanceProfile:
+
+  COEAWSOBSGrafanaInstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
       Roles:
-        - !Ref GrafanaEC2Role
-  GrafanaSecurityGroup:
+        - !Ref COEAWSOBSGrafanaEC2Role
+
+  COEAWSOBSGrafanaSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Enable SSH and HTTP access to the Grafana server
-      VpcId: !Ref VPC
+      VpcId: !Ref COEAWSOBSVPC
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 22
@@ -638,23 +635,23 @@ Resources:
           ToPort: 3000
           CidrIp: 0.0.0.0/0
 
-  GrafanaInstance:
+  COEAWSOBSGrafanaInstance:
     Type: AWS::EC2::Instance
-    DependsOn: SESIAMUser
+    DependsOn: COEAWSOBSSESIAMUser
     Properties:
       InstanceType: !Ref InstanceType
       SecurityGroupIds:
-        - !Ref GrafanaSecurityGroup
+        - !Ref COEAWSOBSGrafanaSecurityGroup
       KeyName: !Ref KeyName
-      IamInstanceProfile: !Ref GrafanaInstanceProfile
+      IamInstanceProfile: !Ref COEAWSOBSGrafanaInstanceProfile
       ImageId: !FindInMap
         - RegionMap
         - !Ref 'AWS::Region'
         - AMI
-      SubnetId: !Ref PublicSubnet1
+      SubnetId: !Ref COEAWSOBSPublicSubnet1
       Tags:
         - Key: Name
-          Value: "POC-Grafana-Instance"
+          Value: "COE-AWS-OBS-Grafana-Instance"
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
@@ -682,8 +679,8 @@ Resources:
           [smtp]
           enabled = true
           host = email-smtp.us-east-1.amazonaws.com:587
-          user = ${SESIAMUserAccessKey}
-          password = ${SESIAMUserAccessKey}
+          user = ${COEAWSOBSSESIAMUser}
+          password = ${COEAWSOBSSESIAMUserAccessKey}
           skip_verify = true
           from_address = luis.simon@encora.com
           from_name = Grafana
@@ -700,10 +697,10 @@ Resources:
   # CloudWatch Alarms
   ##################################
 
-  LambdaErrorRateAlarm:
+  COEAWSOBSLambdaErrorRateAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: "LambdaErrorRateAlarm"
+      AlarmName: "COE-AWS-OBS-LambdaErrorRateAlarm"
       MetricName: Errors
       Namespace: AWS/Lambda
       Statistic: Sum
@@ -713,14 +710,14 @@ Resources:
       ComparisonOperator: GreaterThanOrEqualToThreshold
       Dimensions:
         - Name: FunctionName
-          Value: !Ref SampleLambdaFunction
+          Value: !Ref COEAWSOBSSampleLambdaFunction
       AlarmActions:
-        - !Ref AlarmSNS
+        - !Ref COEAWSOBSAlarmSNS
 
-  EC2CPUStressAlarm:
+  COEAWSOBSEC2CPUStressAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: "EC2CPUStressAlarm"
+      AlarmName: "COE-AWS-OBS-EC2CPUStressAlarm"
       MetricName: CPUUtilization
       Namespace: AWS/EC2
       Statistic: Average
@@ -730,14 +727,14 @@ Resources:
       ComparisonOperator: GreaterThanOrEqualToThreshold
       Dimensions:
         - Name: InstanceId
-          Value: !Ref GrafanaInstance
+          Value: !Ref COEAWSOBSGrafanaInstance
       AlarmActions:
-        - !Ref AlarmSNS
+        - !Ref COEAWSOBSAlarmSNS
 
-  EC2MemoryUsageAlarm:
+  COEAWSOBSEC2MemoryUsageAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: "EC2MemoryUsageAlarm"
+      AlarmName: "COE-AWS-OBS-EC2MemoryUsageAlarm"
       MetricName: mem_used_percent
       Namespace: CWAgent
       Statistic: Average
@@ -747,14 +744,14 @@ Resources:
       ComparisonOperator: GreaterThanOrEqualToThreshold
       Dimensions:
         - Name: InstanceId
-          Value: !Ref GrafanaInstance
+          Value: !Ref COEAWSOBSGrafanaInstance
       AlarmActions:
-        - !Ref AlarmSNS
+        - !Ref COEAWSOBSAlarmSNS
 
-  ASGInstancesStressAlarm:
+  COEAWSOBSASGInstancesStressAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: "ASGInstancesStressAlarm"
+      AlarmName: "COE-AWS-OBS-ASGInstancesStressAlarm"
       MetricName: CPUUtilization
       Namespace: AWS/EC2
       Statistic: Average
@@ -764,33 +761,34 @@ Resources:
       ComparisonOperator: GreaterThanOrEqualToThreshold
       Dimensions:
         - Name: AutoScalingGroupName
-          Value: !Ref ContainerFleetASG
+          Value: !Ref COEAWSOBSContainerFleetASG
       AlarmActions:
-        - !Ref AlarmSNS
+        - !Ref COEAWSOBSAlarmSNS
 
-  AlarmSNS:
+  COEAWSOBSAlarmSNS:
     Type: AWS::SNS::Topic
     Properties:
-      TopicName: "COE-AWS-BOS-AlarmNotifications"
-  SESIAMUser:
-      Type: AWS::IAM::User
-      Properties:
-        UserName: "SES_SMTP_User"
-        Policies:
-          - PolicyName: "SESSendEmailPolicy"
-            PolicyDocument:
-              Version: "2012-10-17"
-              Statement:
-                - Effect: Allow
-                  Action:
-                    - "ses:SendEmail"
-                    - "ses:SendRawEmail"
-                  Resource: "*"
+      TopicName: "COE-AWS-OBS-AlarmNotifications"
 
-  SESIAMUserAccessKey:
+  COEAWSOBSSESIAMUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: "COEAWSOBSSES_SMTP_User"
+      Policies:
+        - PolicyName: "COEAWSOBSSESSendEmailPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "ses:SendEmail"
+                  - "ses:SendRawEmail"
+                Resource: "*"
+
+  COEAWSOBSSESIAMUserAccessKey:
     Type: AWS::IAM::AccessKey
     Properties:
-      UserName: !Ref SESIAMUser
+      UserName: !Ref COEAWSOBSSESIAMUser
 Mappings:
   RegionMap:
     us-east-2:
@@ -799,49 +797,50 @@ Mappings:
 Outputs:
   VPCId:
     Description: "VPC Id"
-    Value: !Ref VPC
+    Value: !Ref COEAWSOBSVPC
 
   PublicSubnet1Id:
     Description: "Public Subnet 1 Id"
-    Value: !Ref PublicSubnet1
+    Value: !Ref COEAWSOBSPublicSubnet1
 
   PublicSubnet2Id:
     Description: "Public Subnet 2 Id"
-    Value: !Ref PublicSubnet2
+    Value: !Ref COEAWSOBSPublicSubnet2
 
   PrivateSubnet1Id:
     Description: "Private Subnet 1 Id"
-    Value: !Ref PrivateSubnet1
+    Value: !Ref COEAWSOBSPrivateSubnet1
 
   PrivateSubnet2Id:
     Description: "Private Subnet 2 Id"
-    Value: !Ref PrivateSubnet2
+    Value: !Ref COEAWSOBSPrivateSubnet2
 
   LambdaFunctionName:
     Description: "Name of the sample Lambda function"
-    Value: !Ref SampleLambdaFunction
+    Value: !Ref COEAWSOBSSampleLambdaFunction
 
   DynamoDBTableName:
     Description: "Name of the sample DynamoDB table"
-    Value: !Ref SampleDynamoDBTable
+    Value: !Ref COEAWSOBSSampleDynamoDBTable
 
   ContainerFleetASGName:
     Description: "Name of the container fleet Auto Scaling Group"
-    Value: !Ref ContainerFleetASG
+    Value: !Ref COEAWSOBSContainerFleetASG
 
   InstancePublicIP:
     Description: Public IP address of the Grafana instance
-    Value: !GetAtt GrafanaInstance.PublicIp
+    Value: !GetAtt COEAWSOBSGrafanaInstance.PublicIp
 
   GrafanaURL:
     Description: URL to access Grafana
     Value: !Sub
       - http://${PublicIp}:3000
-      - PublicIp: !GetAtt GrafanaInstance.PublicIp
+      - PublicIp: !GetAtt COEAWSOBSGrafanaInstance.PublicIp
+
   SESIAMUserAccessKeyId:
     Description: "Access Key ID for SES SMTP User"
-    Value: !Ref SESIAMUserAccessKey
+    Value: !Ref COEAWSOBSSESIAMUserAccessKey
 
   SESIAMUserSecretAccessKey:
     Description: "Secret Access Key for SES SMTP User"
-    Value: !GetAtt SESIAMUserAccessKey.SecretAccessKey
+    Value: !GetAtt COEAWSOBSSESIAMUserAccessKey.SecretAccessKey
