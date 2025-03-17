@@ -683,6 +683,7 @@ Resources:
             skip_verify = true
             from_address = luis.simon@encora.com
             from_name = Grafana
+            startTLS_policy = true
             EOF
 
             # Reload systemd manager configuration
