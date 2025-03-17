@@ -8,6 +8,10 @@ Parameters:
   KeyName:
     Description: Name of an existing EC2 KeyPair to enable SSH access to the instances.
     Type: AWS::EC2::KeyPair::KeyName
+  InstanceType:
+    Description: EC2 instance type for the container fleet.
+    Type: String
+    Default: t3.small
   SSHLocation:
     Description: The IP address range that can be used to SSH to the EC2 instance
     Type: String
@@ -462,7 +466,7 @@ Resources:
     Properties:
       LaunchTemplateName: "POC-ContainerFleet-LT"
       LaunchTemplateData:
-        InstanceType: t3.small
+        InstanceType: !Ref InstanceType
         ImageId: ami-0fc82f4dabc05670b # Updated valid AMI
         ImageId: !FindInMap
           - RegionMap
@@ -637,7 +641,7 @@ Resources:
   GrafanaInstance:
     Type: AWS::EC2::Instance
     Properties:
-      InstanceType: t3.small
+      InstanceType: !Ref InstanceType
       SecurityGroupIds:
         - !Ref GrafanaSecurityGroup
       KeyName: !Ref KeyName
