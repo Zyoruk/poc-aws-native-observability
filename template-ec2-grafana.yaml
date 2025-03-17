@@ -577,6 +577,14 @@ Resources:
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
         - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
       Policies:
+        - PolicyName: COEAWSOBSGrafanaSendSNSPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "sns:Publish"
+                Resource: !Ref COEAWSOBSAlarmSNS
         - PolicyName: COEAWSOBSGrafanaCloudWatchAccess
           PolicyDocument:
             Version: "2012-10-17"
@@ -672,19 +680,6 @@ Resources:
 
             # Install Grafana
             yum install -y grafana
-
-            # Configure Grafana SMTP settings
-            cat <<EOF >> /etc/grafana/grafana.ini
-            [smtp]
-            enabled = true
-            host = email-smtp.us-east-1.amazonaws.com:587
-            user = ${COEAWSOBSSESIAMUser}
-            password = ${COEAWSOBSSESIAMUserAccessKey}
-            skip_verify = true
-            from_address = luis.simon@encora.com
-            from_name = Grafana
-            startTLS_policy = true
-            EOF
 
             # Reload systemd manager configuration
             systemctl daemon-reload
@@ -783,25 +778,6 @@ Resources:
     Properties:
       TopicName: "COE-AWS-OBS-AlarmNotifications"
 
-  COEAWSOBSSESIAMUser:
-    Type: AWS::IAM::User
-    Properties:
-      UserName: "COEAWSOBSSES_SMTP_User"
-      Policies:
-        - PolicyName: "COEAWSOBSSESSendEmailPolicy"
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - "ses:SendEmail"
-                  - "ses:SendRawEmail"
-                Resource: "*"
-
-  COEAWSOBSSESIAMUserAccessKey:
-    Type: AWS::IAM::AccessKey
-    Properties:
-      UserName: !Ref COEAWSOBSSESIAMUser
 Mappings:
   RegionMap:
     us-east-2:
@@ -849,11 +825,3 @@ Outputs:
     Value: !Sub
       - http://${PublicIp}:3000
       - PublicIp: !GetAtt COEAWSOBSGrafanaInstance.PublicIp
-
-  SESIAMUserAccessKeyId:
-    Description: "Access Key ID for SES SMTP User"
-    Value: !Ref COEAWSOBSSESIAMUserAccessKey
-
-  SESIAMUserSecretAccessKey:
-    Description: "Secret Access Key for SES SMTP User"
-    Value: !GetAtt COEAWSOBSSESIAMUserAccessKey.SecretAccessKey
