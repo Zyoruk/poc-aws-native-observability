@@ -640,6 +640,7 @@ Resources:
 
   GrafanaInstance:
     Type: AWS::EC2::Instance
+    DependsOn: SESIAMUser
     Properties:
       InstanceType: !Ref InstanceType
       SecurityGroupIds:
@@ -683,7 +684,101 @@ Resources:
           systemctl enable grafana-server
           systemctl start grafana-server
 
+  ##################################
+  # CloudWatch Alarms
+  ##################################
 
+  LambdaErrorRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: "LambdaErrorRateAlarm"
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref SampleLambdaFunction
+      AlarmActions:
+        - !Ref AlarmSNS
+
+  EC2CPUStressAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: "EC2CPUStressAlarm"
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: InstanceId
+          Value: !Ref GrafanaInstance
+      AlarmActions:
+        - !Ref AlarmSNS
+
+  EC2MemoryUsageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: "EC2MemoryUsageAlarm"
+      MetricName: mem_used_percent
+      Namespace: CWAgent
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: InstanceId
+          Value: !Ref GrafanaInstance
+      AlarmActions:
+        - !Ref AlarmSNS
+
+  ASGInstancesStressAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: "ASGInstancesStressAlarm"
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref ContainerFleetASG
+      AlarmActions:
+        - !Ref AlarmSNS
+
+  AlarmSNS:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: "COE-AWS-BOS-AlarmNotifications"
+  SESIAMUser:
+      Type: AWS::IAM::User
+      Properties:
+        UserName: "SES_SMTP_User"
+        Policies:
+          - PolicyName: "SESSendEmailPolicy"
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - "ses:SendEmail"
+                    - "ses:SendRawEmail"
+                  Resource: "*"
+
+  SESIAMUserAccessKey:
+    Type: AWS::IAM::AccessKey
+    Properties:
+      UserName: !Ref SESIAMUser
 Mappings:
   RegionMap:
     us-east-2:
@@ -731,3 +826,10 @@ Outputs:
     Value: !Sub
       - http://${PublicIp}:3000
       - PublicIp: !GetAtt GrafanaInstance.PublicIp
+  SESIAMUserAccessKeyId:
+    Description: "Access Key ID for SES SMTP User"
+    Value: !Ref SESIAMUserAccessKey
+
+  SESIAMUserSecretAccessKey:
+    Description: "Secret Access Key for SES SMTP User"
+    Value: !GetAtt SESIAMUserAccessKey.SecretAccessKey
