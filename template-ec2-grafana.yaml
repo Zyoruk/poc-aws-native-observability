@@ -238,7 +238,7 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: "COE-AWS-OBS-SampleLambda"
-      Handler: index.handler
+      Handler: index.lambda_handler
       Runtime: python3.12
       Role: !GetAtt COEAWSOBSLambdaExecutionRole.Arn
       Layers:
@@ -340,34 +340,31 @@ Resources:
           @tracer.capture_method
           def test_logs():
               try:
-                  # adding custom metrics
-                  # See: https://awslabs.github.io/aws-lambda-powertools-python/latest/core/metrics/
+                  # Adding custom metrics
                   metrics.add_metric(name="HelloWorldInvocations", unit=MetricUnit.Count, value=1)
 
                   columns, data = create_table_structure()
-
                   details = analyze_employee_data(columns, data)
 
-                  key_logs = {"result_details": details }
-
-                  logger.append_keys(**key_logs)
+                  # Standardized log structure
+                  logger.info("Analyzed employee data", extra={
+                      "result_details": details,
+                      "total_rows": len(data),
+                      "columns": columns
+                  })
 
                   all_rows_dict = {}
                   data_id = columns.index("id")
                   data_full_name = columns.index("full_name")
                   for row in data:
-                      # Prepare the row as a dictionary
                       row_dict = {
                           "Full_Name": row[data_full_name],
                           "ID": row[data_id]
                       }
-
                       all_rows_dict[row[data_id]] = row_dict
 
-                  logger.debug({"all_rows": all_rows_dict})
+                  logger.debug("Processed all rows", extra={"all_rows": all_rows_dict})
 
-                  # structured log
-                  # See: https://awslabs.github.io/aws-lambda-powertools-python/latest/core/logger/
                   result = {
                       "statusCode": 200,
                       "message": json.dumps("Data retrieved successfully!"),
@@ -376,17 +373,17 @@ Resources:
                       }
                   }
               except Exception as ex:
+                  logger.error("Error processing data", extra={"error": str(ex)})
                   result = {
                       "statusCode": 400,
-                      "message": json.dumps("Data no retrieved!"),
+                      "message": json.dumps("Data not retrieved!"),
                       "body": {
                           "data": "no_available"
                       },
-                      "errors": ex
+                      "errors": str(ex)
                   }
 
-              logger.info(result)
-              
+              logger.info("Lambda execution result", extra={"result": result})
               return result
 
           # Enrich logging with contextual information from Lambda
