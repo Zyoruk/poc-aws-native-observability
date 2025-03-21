@@ -270,8 +270,16 @@ Resources:
       VpcId: !Ref COEAWSOBSVPC
       SecurityGroupIngress:
         - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 9100
+          ToPort: 9100
           CidrIp: 0.0.0.0/0
       SecurityGroupEgress:
         - IpProtocol: tcp
@@ -298,6 +306,16 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
         - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+      Policies:
+        - PolicyName: PrometheusMetricsAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "cloudwatch:GetMetricData"
+                  - "cloudwatch:ListMetrics"
+                Resource: "*"
 
   COEAWSOBSEC2InstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -322,6 +340,38 @@ Resources:
         UserData: !Base64 |
           #!/bin/bash
           yum update -y
+
+          # Download and install Prometheus Node Exporter
+          wget https://github.com/prometheus/node_exporter/releases/download/v1.9.0/node_exporter-1.9.0.linux-amd64.tar.gz
+          tar -xvf node_exporter-1.9.0.linux-amd64.tar.gz
+          cp node_exporter-1.9.0.linux-amd64/node_exporter /usr/local/bin/
+
+          # Create a prometheus user and set ownership
+          sudo useradd prometheus --no-create-home --shell /bin/false
+          chown prometheus:prometheus /usr/local/bin/node_exporter
+
+          # Create Prometheus Node Exporter systemd service
+          cat <<EOF > /etc/systemd/system/prometheus-node-exporter.service
+          [Unit]
+          Description=Prometheus Node Exporter
+          After=network.target
+          [Service]
+          User=prometheus
+          Group=prometheus
+          ExecStart=/usr/local/bin/node_exporter --web.listen-address=:9100
+          Restart=always
+          RestartSec=5
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+
+          # Reload systemd manager configuration
+          systemctl daemon-reload
+          
+          # Enable and start Prometheus Node Exporter
+          systemctl enable prometheus-node-exporter
+          systemctl start prometheus-node-exporter
+
           # Install CloudWatch Agent
           yum install -y amazon-cloudwatch-agent amazon-ssm-agent
           # Start SSM Agent
@@ -370,6 +420,69 @@ Resources:
           EOF
           # Start the CloudWatch Agent using the configuration file
           /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
+  COEAWSOBSLoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for the Load Balancer
+      VpcId: !Ref COEAWSOBSVPC
+      SecurityGroupIngress:
+        # Allow Prometheus to access the Load Balancer on port 9100
+        - IpProtocol: tcp
+          FromPort: 9100
+          ToPort: 9100
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        # Allow the Load Balancer to forward traffic to the Container Fleet ASG on port 9100
+        - IpProtocol: tcp
+          FromPort: 9100
+          ToPort: 9100
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: "COE-AWS-OBS-LoadBalancer-SG"
+          
+  COEAWSOBSAppLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: "COE-AWS-OBS-AppLoadBalancer"
+      Subnets:
+        - !Ref COEAWSOBSPublicSubnet1
+        - !Ref COEAWSOBSPublicSubnet2
+      SecurityGroups:
+        - !Ref COEAWSOBSContainerFleetSecurityGroup
+        - !Ref COEAWSOBSLoadBalancerSecurityGroup
+      Scheme: internet-facing
+      Type: application
+      IpAddressType: ipv4
+      
+  COEAWSOBSALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: "COE-AWS-OBS-ALB-TargetGroup"
+      Port: 9100
+      Protocol: HTTP
+      VpcId: !Ref COEAWSOBSVPC
+      TargetType: instance
+      HealthCheckEnabled: true
+      HealthCheckPath: /metrics
+      HealthCheckPort: 9100
+      HealthCheckIntervalSeconds: 240
+      HealthCheckTimeoutSeconds: 120
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      Matcher:
+        HttpCode: 200-299
+
+  COEAWSOBSAppLoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref COEAWSOBSALBTargetGroup
+      LoadBalancerArn: !Ref COEAWSOBSAppLoadBalancer
+      Port: 9100
+      Protocol: HTTP
+
 
   ##############################
   # Container Fleet: Auto Scaling Group
@@ -387,6 +500,8 @@ Resources:
       VPCZoneIdentifier:
         - !Ref COEAWSOBSPublicSubnet1
         - !Ref COEAWSOBSPublicSubnet2
+      TargetGroupARNs:
+        - !Ref COEAWSOBSALBTargetGroup
       Tags:
         - Key: Name
           Value: "COE-AWS-OBS-ContainerFleet"
@@ -406,6 +521,132 @@ Resources:
         - AttributeName: "Id"
           KeyType: "HASH"
       BillingMode: PAY_PER_REQUEST
+
+  ##################################
+  # Prometheus Security Group
+  ##################################
+  COEAWSOBSPrometheusSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable SSH and HTTP access to the Prometheus server.
+      VpcId: !Ref COEAWSOBSVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref SSHLocation
+        - IpProtocol: tcp
+          FromPort: 9090
+          ToPort: 9090
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 9100
+          ToPort: 9100
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 9100
+          ToPort: 9100
+          CidrIp: 0.0.0.0/0 # Private subnet CIDR block
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: "COE-AWS-OBS-Prometheus-SG"
+
+  ##################################
+  # Prometheus EC2 Instance
+  ##################################
+  COEAWSOBSPrometheusInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      SecurityGroupIds:
+        - !Ref COEAWSOBSPrometheusSecurityGroup
+      SubnetId: !Ref COEAWSOBSPublicSubnet1
+      ImageId: !FindInMap
+        - RegionMap
+        - !Ref 'AWS::Region'
+        - AMI
+      Tags:
+        - Key: Name
+          Value: "COE-AWS-OBS-Prometheus-Instance"
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          # Update all installed packages
+          yum update -y
+
+          # Install Prometheus
+          useradd --no-create-home --shell /bin/false prometheus
+          mkdir /etc/prometheus
+          mkdir /var/lib/prometheus
+          chown prometheus:prometheus /etc/prometheus
+          chown prometheus:prometheus /var/lib/prometheus
+
+          # Download Prometheus
+          curl -LO https://github.com/prometheus/prometheus/releases/download/v2.45.0/prometheus-2.45.0.linux-amd64.tar.gz
+          tar -xvf prometheus-2.45.0.linux-amd64.tar.gz
+          cp prometheus-2.45.0.linux-amd64/prometheus /usr/local/bin/
+          cp prometheus-2.45.0.linux-amd64/promtool /usr/local/bin/
+          cp -r prometheus-2.45.0.linux-amd64/consoles /etc/prometheus
+          cp -r prometheus-2.45.0.linux-amd64/console_libraries /etc/prometheus
+          chown -R prometheus:prometheus /etc/prometheus
+          chown prometheus:prometheus /usr/local/bin/prometheus
+          chown prometheus:prometheus /usr/local/bin/promtool
+
+          # Create Prometheus configuration file
+          cat <<EOF > /etc/prometheus/prometheus.yml
+          global:
+            scrape_interval: 15s
+            scrape_timeout: 10s
+
+          scrape_configs:
+            - job_name: 'prometheus'
+              static_configs:
+                - targets: ['localhost:9090']
+
+            - job_name: 'ec2_exporter_COEAWSOBSContainerFleet'
+              static_configs:
+                - targets: ['${COEAWSOBSAppLoadBalancer.DNSName}:9100']
+
+            - job_name: 'ec2_exporter_COEAWSOBSGrafanaInstance'
+              static_configs:
+                - targets: ['${COEAWSOBSGrafanaInstance.PrivateIp}:9100']
+          EOF
+
+          # Create Prometheus systemd service
+          cat <<EOF > /etc/systemd/system/prometheus.service
+          [Unit]
+          Description=Prometheus
+          Wants=network-online.target
+          After=network-online.target
+
+          [Service]
+          User=prometheus
+          Group=prometheus
+          Type=simple
+          ExecStart=/usr/local/bin/prometheus \
+            --config.file=/etc/prometheus/prometheus.yml \
+            --storage.tsdb.path=/var/lib/prometheus \
+            --web.console.templates=/etc/prometheus/consoles \
+            --web.console.libraries=/etc/prometheus/console_libraries
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+
+          # Start Prometheus
+          systemctl daemon-reload
+          systemctl enable prometheus
+          systemctl start prometheus
 
   ##################################
   # Grafana Instance
@@ -483,6 +724,10 @@ Resources:
       VpcId: !Ref COEAWSOBSVPC
       SecurityGroupIngress:
         - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
           CidrIp: !Ref SSHLocation
@@ -490,6 +735,10 @@ Resources:
           FromPort: 3000
           ToPort: 3000
           CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 9100
+          ToPort: 9100
+          SourceSecurityGroupId: !Ref COEAWSOBSPrometheusSecurityGroup
 
   # Grafana Launch Template
   COEAWSOBSGrafanaLaunchTemplate:
@@ -512,6 +761,37 @@ Resources:
             #!/bin/bash
             # Update all installed packages
             yum update -y
+
+            # Download and install Prometheus Node Exporter
+            wget https://github.com/prometheus/node_exporter/releases/download/v1.9.0/node_exporter-1.9.0.linux-amd64.tar.gz
+            tar -xvf node_exporter-1.9.0.linux-amd64.tar.gz
+            cp node_exporter-1.9.0.linux-amd64/node_exporter /usr/local/bin/
+
+            # Create a prometheus user and set ownership
+            sudo useradd prometheus --no-create-home --shell /bin/false
+            chown prometheus:prometheus /usr/local/bin/node_exporter
+
+            # Create Prometheus Node Exporter systemd service
+            cat <<EOF > /etc/systemd/system/prometheus-node-exporter.service
+            [Unit]
+            Description=Prometheus Node Exporter
+            After=network.target
+            [Service]
+            User=prometheus
+            Group=prometheus
+            ExecStart=/usr/local/bin/node_exporter --web.listen-address=:9100
+            Restart=always
+            RestartSec=5
+            [Install]
+            WantedBy=multi-user.target
+            EOF
+
+            # Reload systemd manager configuration
+            systemctl daemon-reload
+
+            # Enable and start Prometheus Node Exporter
+            systemctl enable prometheus-node-exporter
+            systemctl start prometheus-node-exporter
 
             # Add Grafana repository
             cat <<EOF > /etc/yum.repos.d/grafana.repo
@@ -673,3 +953,12 @@ Outputs:
     Value: !Sub
       - http://${PublicIp}:3000
       - PublicIp: !GetAtt COEAWSOBSGrafanaInstance.PublicIp
+  PrometheusInstancePublicIP:
+    Description: Public IP address of the Prometheus instance.
+    Value: !GetAtt COEAWSOBSPrometheusInstance.PublicIp
+
+  PrometheusURL:
+    Description: URL to access Prometheus.
+    Value: !Sub
+      - http://${PublicIp}:9090
+      - PublicIp: !GetAtt COEAWSOBSPrometheusInstance.PublicIp
