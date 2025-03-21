@@ -1,1 +1,3 @@
 EC2KeyName.pem
+.DS_Store
+lambda_function.zip
