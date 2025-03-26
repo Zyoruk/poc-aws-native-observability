@@ -13,7 +13,7 @@ This repository contains CloudFormation templates that provision a Proof-of-Conc
 - **Networking Components:**  
   A compact VPC with public and private subnets, an Internet Gateway, a NAT Gateway, and the necessary route tables and associations to ensure secure and efficient network connectivity.
 
-![Application Composer diagram for the Cloudformation Template](application-composer-poc-observability.png "Application Diagram")
+![Application Composer diagram for the Cloudformation Template](docs/application-composer-poc-observability.png "Application Diagram")
 ---
 
 ## Resource Breakdown

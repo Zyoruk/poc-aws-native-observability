@@ -120,9 +120,3 @@ flowchart TB
     
     CloudWatch -.->|Triggers| SNSTopic
 ```
-
-## License
-[Specify your license or usage terms]
-
-## Contact
-[Add contact information or project maintainer details]
