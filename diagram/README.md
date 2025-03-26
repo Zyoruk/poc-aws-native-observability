@@ -46,7 +46,7 @@ https://diagrams.mingrammer.com/docs/nodes/aws
 
 4. Navigate to this folder in your terminal:
    ```bash
-   cd /Users/zyoruk/Projects/coe-aws-obs/diagram
+   cd diagram
    ```
 
 5. Run the script:
