@@ -25,7 +25,6 @@ https://diagrams.mingrammer.com/docs/nodes/aws
 
 3. The script will generate two files in the `../docs` folder:
    - `../docs/aws_observability_poc_diagram.png`
-   - `../docs/aws_observability_poc_diagram.svg`
 
 ## How to Generate the Diagram Using Conda
 
@@ -56,7 +55,6 @@ https://diagrams.mingrammer.com/docs/nodes/aws
 
 6. The script will generate two files in the `../docs` folder:
    - `../docs/aws_observability_poc_diagram.png`
-   - `../docs/aws_observability_poc_diagram.svg`
 
 ## Output
 
