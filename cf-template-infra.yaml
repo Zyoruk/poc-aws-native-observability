@@ -21,6 +21,9 @@ Parameters:
     AllowedPattern: '^((\d{1,3}\.){3}\d{1,3}/\d{1,3})$'
     ConstraintDescription: Must be a valid IP CIDR range of the form x.x.x.x/x
 
+Conditions:
+  CreateApiGatewayStage: !Equals [!Ref "AWS::StackName", "coe-aws-obs-poc-stack-infra"]
+
 Resources:
   ##################################
   # VPC and Networking Resources (Compact Design)
@@ -33,14 +36,14 @@ Resources:
       EnableDnsHostnames: true
       Tags:
         - Key: Name
-          Value: "COE-AWS-OBS-VPC"
+          Value: "coe-aws-obs-vpc"
 
   COEAWSOBSInternetGateway:
     Type: AWS::EC2::InternetGateway
     Properties:
       Tags:
         - Key: Name
-          Value: "COE-AWS-OBS-IGW"
+          Value: "coe-aws-obs-igw"
 
   COEAWSOBSVPCGatewayAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
@@ -57,7 +60,7 @@ Resources:
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
-          Value: "COE-AWS-OBS-PublicSubnet1"
+          Value: "coe-aws-obs-publicsubnet1"
 
   COEAWSOBSPublicSubnet2:
     Type: AWS::EC2::Subnet
@@ -68,7 +71,7 @@ Resources:
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
-          Value: "COE-AWS-OBS-PublicSubnet2"
+          Value: "coe-aws-obs-publicsubnet2"
 
   COEAWSOBSPrivateSubnet1:
     Type: AWS::EC2::Subnet
@@ -79,7 +82,7 @@ Resources:
       MapPublicIpOnLaunch: false
       Tags:
         - Key: Name
-          Value: "COE-AWS-OBS-PrivateSubnet1"
+          Value: "coe-aws-obs-privatesubnet1"
 
   COEAWSOBSPrivateSubnet2:
     Type: AWS::EC2::Subnet
@@ -90,7 +93,7 @@ Resources:
       MapPublicIpOnLaunch: false
       Tags:
         - Key: Name
-          Value: "COE-AWS-OBS-PrivateSubnet2"
+          Value: "coe-aws-obs-privatesubnet2"
 
   COEAWSOBSPublicRouteTable:
     Type: AWS::EC2::RouteTable
@@ -98,7 +101,7 @@ Resources:
       VpcId: !Ref COEAWSOBSVPC
       Tags:
         - Key: Name
-          Value: "COE-AWS-OBS-PublicRT"
+          Value: "coe-aws-obs-publicrt"
 
   COEAWSOBSPublicRoute:
     Type: AWS::EC2::Route
@@ -134,7 +137,7 @@ Resources:
       SubnetId: !Ref COEAWSOBSPublicSubnet1
       Tags:
         - Key: Name
-          Value: "COE-AWS-OBS-NATGateway"
+          Value: "coe-aws-obs-natgateway"
 
   COEAWSOBSPrivateRouteTable:
     Type: AWS::EC2::RouteTable
@@ -142,7 +145,7 @@ Resources:
       VpcId: !Ref COEAWSOBSVPC
       Tags:
         - Key: Name
-          Value: "COE-AWS-OBS-PrivateRT"
+          Value: "coe-aws-obs-privatert"
 
   COEAWSOBSPrivateRoute:
     Type: AWS::EC2::Route
@@ -172,6 +175,9 @@ Resources:
       Name: "coe-aws-obs-apigateway-cf"
       Description: "Sample API Gateway for Lambda Integration"
       FailOnWarnings: true
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
 
   COEAWSOBSApiGatewayResource:
     Type: AWS::ApiGateway::Resource
@@ -180,43 +186,136 @@ Resources:
       RestApiId: !Ref COEAWSOBSApiGatewayRestApi
       PathPart: "test"
 
-  COEAWSOBSApiGatewayMethod:
+  COEAWSOBSApiGatewayMethodGet:
     Type: AWS::ApiGateway::Method
     Properties:
       RestApiId: !Ref COEAWSOBSApiGatewayRestApi
       ResourceId: !Ref COEAWSOBSApiGatewayResource
-      HttpMethod: ANY
+      HttpMethod: GET
       AuthorizationType: NONE
       Integration:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${COEAWSOBSSampleLambdaFunction.Arn}/invocations
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+  
+  COEAWSOBSApiGatewayMethodPost:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref COEAWSOBSApiGatewayRestApi
+      ResourceId: !Ref COEAWSOBSApiGatewayResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${COEAWSOBSSampleLambdaFunction.Arn}/invocations
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+  
+  COEAWSOBSApiGatewayMethodOptionsCORS:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref COEAWSOBSApiGatewayRestApi
+      ResourceId: !Ref COEAWSOBSApiGatewayResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,OPTIONS'"
+            ResponseTemplates:
+              application/json: "{}"
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
 
   COEAWSOBSApiGatewayDeployment:
     Type: AWS::ApiGateway::Deployment
-    DependsOn: COEAWSOBSApiGatewayMethod
+    DependsOn: 
+      - COEAWSOBSApiGatewayMethodGet
+      - COEAWSOBSApiGatewayMethodPost
+      - COEAWSOBSApiGatewayMethodOptionsCORS
     Properties:
       RestApiId: !Ref COEAWSOBSApiGatewayRestApi
+      # StageName: "dev"
+  
+  COEAWSOBSApiGatewayStage:
+    Type: AWS::ApiGateway::Stage
+    Condition: CreateApiGatewayStage
+    Properties:
       StageName: "dev"
+      Description: "Development Stage with Tracing and Metrics"
+      RestApiId: !Ref COEAWSOBSApiGatewayRestApi
+      DeploymentId: !Ref COEAWSOBSApiGatewayDeployment
+      TracingEnabled: true
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          MetricsEnabled: true
+          DataTraceEnabled: true
+          LoggingLevel: INFO
+          ThrottlingBurstLimit: 5000
+          ThrottlingRateLimit: 10000
+      AccessLogSetting:
+        DestinationArn: !GetAtt COEAWSOBSApiGatewayAccessLogGroup.Arn
+        Format: '{ "APIGateway" : { "requestId" : "$context.requestId", "ip" : "$context.identity.sourceIp", "caller" : "$context.identity.caller", "user" : "$context.identity.user", "requestTime" : "$context.requestTime", "httpMethod" : "$context.httpMethod", "resourcePath" : "$context.resourcePath", "status" : "$context.status", "protocol" : "$context.protocol", "responseLength" : "$context.responseLength", "type" : "$context.error.responseType", "errorMessage" : "$context.error.message", "xrayTraceId" : "$context.xrayTraceId" }, "Authorizer" : { "authorizerError" : "$context.authorizer.error", "authorizerErrorMessage" : "$context.authorizer.error.errorMessage", "authorizerStatus" : "$context.authorizer.status", "authorizerRequestId" : "$context.authorizer.requestId", "authenticateError" : "$context.authenticate.error", "authPrincipalId" : "$context.authorizer.principalId", "authToken" : "$context.authorizer.token" }, "Integration" : { "status" : "$context.integration.status", "error" : "$context.integration.error", "requestId" : "$context.integration.requestId" }, "WAF" : { "wafResponse" : "$context.wafResponseCode", "wafStatus" : "$context.waf.status", "wafError" : "$context.waf.error" } }'
 
   ##############################
-  # Sample Lambda Function with VPC Config
+  # API Gateway Account Configuration for CloudWatch
   ##############################
-  COEAWSOBSLambdaExecutionRole:
+  COEAWSOBSApiGatewayAccessLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/apigateway/${COEAWSOBSApiGatewayRestApi}"
+      RetentionInDays: 30
+  
+  # COEAWSOBSLambdaLogGroup:
+  #   Type: AWS::Logs::LogGroup
+  #   Properties:
+  #     LogGroupName: !Sub "/aws/lambda/${COEAWSOBSSampleLambdaFunction}"
+  #     RetentionInDays: 14
+    
+  COEAWSOBSApiGatewayAccount:
+    Type: AWS::ApiGateway::Account
+    Properties:
+      CloudWatchRoleArn: !GetAtt COEAWSOBSApiGatewayCloudWatchRole.Arn
+
+  COEAWSOBSApiGatewayCloudWatchRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: "COE-AWS-OBS-Lambda-Execution-Role"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
           - Effect: Allow
             Principal:
-              Service: lambda.amazonaws.com
+              Service: apigateway.amazonaws.com
             Action: sts:AssumeRole
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs
 
+  ##############################
+  # Sample Lambda Function with VPC Config
+  ##############################
   COEAWSOBSLambdaSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -234,18 +333,28 @@ Resources:
           CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
-          Value: "COE-AWS-OBS-Lambda-SG"
+          Value: "coe-aws-obs-lambda-sg"
 
   COEAWSOBSSampleLambdaFunction:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: "COE-AWS-OBS-SampleLambda"
-      Handler: lambda_function.handler
+      FunctionName: "coe-aws-obs-lambda-cf"
+      Handler: index.lambda_handler
       Runtime: python3.12
       Role: !GetAtt COEAWSOBSLambdaExecutionRole.Arn
+      Layers:
+        - arn:aws:lambda:us-east-2:017000801446:layer:AWSLambdaPowertoolsPythonV3-python312-x86_64:7
+      Timeout: 30
       Code:
-        S3Bucket: !Sub "coe-aws-obs-deployment-${AWS::Region}-${AWS::AccountId}"
+        S3Bucket: !ImportValue lambda-deployment-bucket-name
         S3Key: "lambda/lambda_function.zip"
+        # ZipFile:
+      TracingConfig:
+        Mode: Active
+      Environment:
+        Variables:
+          DYNAMODB_TABLE: "coe-aws-obs-dynamodb-table"
+
       VpcConfig:
         SubnetIds:
           - !Ref COEAWSOBSPrivateSubnet1
@@ -259,8 +368,42 @@ Resources:
       Action: lambda:InvokeFunction
       FunctionName: !Ref COEAWSOBSSampleLambdaFunction
       Principal: apigateway.amazonaws.com
-  
-   ##############################
+
+  ##############################
+  # Lambda X-Ray Configuration
+  ##############################
+  COEAWSOBSLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: "coe-aws-obs-lambda-execution-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
+      Policies:
+      - PolicyName: DynamoDBAccess
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+                - dynamodb:GetItem
+                - dynamodb:Query
+                - dynamodb:Scan
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: "*"
+
+  ##############################
   # Container Fleet: Security Group
   ##############################
   COEAWSOBSContainerFleetSecurityGroup:
@@ -288,7 +431,7 @@ Resources:
           CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
-          Value: "COE-AWS-OBS-ContainerFleet-SG"
+          Value: "coe-aws-obs-containerfleet-sg"
 
   ##############################
   # Container Fleet: Launch Template for ASG Instances (Using CloudWatch Agent)
@@ -326,7 +469,7 @@ Resources:
   COEAWSOBSContainerFleetLaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
     Properties:
-      LaunchTemplateName: "COE-AWS-OBS-ContainerFleet-LT"
+      LaunchTemplateName: "coe-aws-obs-containerfleet-lt"
       LaunchTemplateData:
         InstanceType: !Ref InstanceType
         ImageId: !FindInMap
@@ -489,7 +632,7 @@ Resources:
   COEAWSOBSContainerFleetASG:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
-      AutoScalingGroupName: "COE-AWS-OBS-ContainerFleet-ASG"
+      AutoScalingGroupName: "coe-aws-obs-containerfleet-asg"
       LaunchTemplate:
         LaunchTemplateId: !Ref COEAWSOBSContainerFleetLaunchTemplate
         Version: !GetAtt COEAWSOBSContainerFleetLaunchTemplate.LatestVersionNumber
@@ -503,7 +646,7 @@ Resources:
         - !Ref COEAWSOBSALBTargetGroup
       Tags:
         - Key: Name
-          Value: "COE-AWS-OBS-ContainerFleet"
+          Value: "coe-aws-obs-containerfleet"
           PropagateAtLaunch: true
 
   ##############################
@@ -512,7 +655,7 @@ Resources:
   COEAWSOBSSampleDynamoDBTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: "COE-AWS-OBS-DynamoDB-Table"
+      TableName: "coe-aws-obs-dynamodb-table"
       AttributeDefinitions:
         - AttributeName: "Id"
           AttributeType: "S"
@@ -653,7 +796,7 @@ Resources:
   COEAWSOBSGrafanaEC2Role:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: "COE-AWS-OBS-GrafanaEC2Role"
+      RoleName: "coe-aws-obs-grafanaec2role"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -743,7 +886,7 @@ Resources:
   COEAWSOBSGrafanaLaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
     Properties:
-      LaunchTemplateName: "COE-AWS-OBS-Grafana-LT"
+      LaunchTemplateName: "coe-aws-obs-grafana-lt"
       LaunchTemplateData:
         InstanceType: !Ref InstanceType
         SecurityGroupIds:
@@ -826,7 +969,7 @@ Resources:
       SubnetId: !Ref COEAWSOBSPublicSubnet1
       Tags:
         - Key: Name
-          Value: "COE-AWS-OBS-Grafana-Instance"
+          Value: "coe-aws-obs-grafana-instance"
 
   ##################################
   # CloudWatch Alarms
@@ -835,7 +978,7 @@ Resources:
   COEAWSOBSLambdaErrorRateAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: "COE-AWS-OBS-LambdaErrorRateAlarm"
+      AlarmName: "coe-aws-obs-lambdaerrorratealarm"
       MetricName: Errors
       Namespace: AWS/Lambda
       Statistic: Sum
@@ -852,7 +995,7 @@ Resources:
   COEAWSOBSEC2CPUStressAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: "COE-AWS-OBS-EC2CPUStressAlarm"
+      AlarmName: "coe-aws-obs-ec2cpustressalarm"
       MetricName: CPUUtilization
       Namespace: AWS/EC2
       Statistic: Average
@@ -869,7 +1012,7 @@ Resources:
   COEAWSOBSEC2MemoryUsageAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: "COE-AWS-OBS-EC2MemoryUsageAlarm"
+      AlarmName: "coe-aws-obs-ec2memoryusagealarm"
       MetricName: mem_used_percent
       Namespace: CWAgent
       Statistic: Average
@@ -886,7 +1029,7 @@ Resources:
   COEAWSOBSASGInstancesStressAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: "COE-AWS-OBS-ASGInstancesStressAlarm"
+      AlarmName: "coe-aws-obs-asginstancesstressalarm"
       MetricName: CPUUtilization
       Namespace: AWS/EC2
       Statistic: Average
@@ -903,7 +1046,7 @@ Resources:
   COEAWSOBSAlarmSNS:
     Type: AWS::SNS::Topic
     Properties:
-      TopicName: "COE-AWS-OBS-AlarmNotifications"
+      TopicName: "coe-aws-obs-alarmnotifications"
 
 Mappings:
   RegionMap:
@@ -952,6 +1095,7 @@ Outputs:
     Value: !Sub
       - http://${PublicIp}:3000
       - PublicIp: !GetAtt COEAWSOBSGrafanaInstance.PublicIp
+
   PrometheusInstancePublicIP:
     Description: Public IP address of the Prometheus instance.
     Value: !GetAtt COEAWSOBSPrometheusInstance.PublicIp

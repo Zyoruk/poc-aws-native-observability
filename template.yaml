@@ -1,0 +1,630 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  POC for native observability integrating AWS Managed Grafana with a CloudWatch data source,
+  along with a sample Lambda, a container fleet (via an Auto Scaling Group) with CloudWatch Agent,
+  and a DynamoDB table – all encapsulated within a dedicated, compact VPC.
+  
+Parameters:
+  KeyName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instances.
+    Type: AWS::EC2::KeyPair::KeyName
+  InstanceType:
+    Description: EC2 instance type for the container fleet.
+    Type: String
+    Default: t3.micro
+
+Resources:
+  ##################################
+  # VPC and Networking Resources (Compact Design)
+  ##################################
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/24
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: "POC-VPC"
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: "POC-IGW"
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # Public Subnets (for container fleet) – each /27
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.0.0/27
+      AvailabilityZone: !Select [ 0, !GetAZs "" ]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: "POC-PublicSubnet1"
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.0.32/27
+      AvailabilityZone: !Select [ 1, !GetAZs "" ]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: "POC-PublicSubnet2"
+
+  # Private Subnets (for Lambda) – each /27
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.0.64/27
+      AvailabilityZone: !Select [ 0, !GetAZs "" ]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: "POC-PrivateSubnet1"
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.0.96/27
+      AvailabilityZone: !Select [ 1, !GetAZs "" ]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: "POC-PrivateSubnet2"
+
+  # Public Route Table and Association
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: "POC-PublicRT"
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  # NAT Gateway to enable outbound connectivity from private subnets
+  NatEIP:
+    Type: AWS::EC2::EIP
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      Domain: vpc
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      AllocationId: !GetAtt NatEIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: "POC-NATGateway"
+
+  # Private Route Table and Association
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: "POC-PrivateRT"
+
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+
+  ##################################
+  # Observability & Application Resources
+  ##################################
+  
+  ##############################
+  # IAM Role for Managed Grafana
+  ##############################
+  GrafanaServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: "POC-Grafana-Service-Role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: grafana.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchReadOnlyAccess
+
+  ##############################
+  # AWS Managed Grafana Workspace with Pre-configured CloudWatch DataSource
+  ##############################
+  GrafanaWorkspace:
+    Type: AWS::Grafana::Workspace
+    Properties:
+      AccountAccessType: CURRENT_ACCOUNT
+      AuthenticationProviders:
+        - AWS_SSO
+      PermissionType: SERVICE_MANAGED
+      Name: "POC-Grafana-Workspace"
+      RoleArn: !GetAtt GrafanaServiceRole.Arn
+      DataSources:
+        - CLOUDWATCH 
+
+  ##############################
+  # API Gateway
+  ##############################
+  ApiGatewayRestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: "coe-aws-obs-apigateway-cf"
+      Description: "Sample API Gateway for Lambda Integration"
+      FailOnWarnings: true
+
+  ApiGatewayResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt ApiGatewayRestApi.RootResourceId
+      RestApiId: !Ref ApiGatewayRestApi
+      PathPart: "test"
+
+  ApiGatewayMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGatewayRestApi
+      ResourceId: !Ref ApiGatewayResource
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SampleLambdaFunction.Arn}/invocations
+
+  ApiGatewayDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: ApiGatewayMethod
+    Properties:
+      RestApiId: !Ref ApiGatewayRestApi
+      StageName: "dev"
+
+  
+  ##############################
+  # Sample Lambda Function with VPC Config
+  ##############################
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: "POC-Lambda-Execution-Role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Security group for Lambda in VPC"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 10.0.0.0/24
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: "POC-Lambda-SG"
+
+  SampleLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: "POC-SampleLambda"
+      Handler: index.handler
+      Runtime: python3.12
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Layers:
+        - arn:aws:lambda:us-east-2:017000801446:layer:AWSLambdaPowertoolsPythonV3-python312-x86_64:7
+      Code:
+        ZipFile: |
+          import json
+          from dotenv import load_dotenv
+
+          load_dotenv()
+
+          # from aws_lambda_powertools.event_handler import APIGatewayRestResolver
+          from aws_lambda_powertools.utilities.typing import LambdaContext
+          from aws_lambda_powertools.logging import correlation_paths
+          from aws_lambda_powertools import Logger
+          from aws_lambda_powertools import Tracer
+          from aws_lambda_powertools import Metrics
+          from aws_lambda_powertools.metrics import MetricUnit
+
+          # app = APIGatewayRestResolver()
+          service = "coe-aws-obs-lambda"
+          tracer = Tracer(service=service)
+          logger = Logger(service=service)
+          metrics = Metrics(namespace=service)
+
+          @tracer.capture_method
+          def create_table_structure():
+              # Sample column names and data for DataFrame
+              COLUMNS = ["full_name", "id", "project_manager_name", "project_name", 
+                      "technical_skill", "soft_skills", "years_in_company", "seniority"]
+
+              # Sample DataFrame initialization
+              SAMPLE_DATA = [
+                  ["John Doe", "1", "Alice", "Project A", {"Python": 3, "AWS": 2}, {"Communication": 5, "Teamwork": 4}, 3, "SE1"],
+                  ["Jane Smith", "2", "Bob", "Project B", {"Java": 4, "AWS": 3}, {"Leadership": 5, "Problem-solving": 5}, 5, "SE2"],
+                  ["Mark Johnson", "3", "Charlie", "Project A", {"Go": 4, "AWS": 4}, {"Adaptability": 4, "Collaboration": 3}, 2, "SE1"],
+                  ["Eve Brown", "4", "Alice", "Project C", {"Ruby": 5, "SQL": 3}, {"Time management": 5, "Creativity": 4}, 6, "SSE"],
+                  ["Chris Green", "5", "Bob", "Project B", {"JavaScript": 4, "AWS": 2}, {"Problem-solving": 5, "Teamwork": 3}, 3, "SE2"],
+                  ["Olivia Taylor", "6", "David", "Project A", {"Python": 4, "Django": 3}, {"Communication": 4, "Leadership": 3}, 4, "SSE"],
+                  ["Daniel White", "7", "Eve", "Project D", {"C++": 3, "Java": 4}, {"Adaptability": 4, "Collaboration": 5}, 2, "SE1"],
+                  ["Sophia Martin", "8", "Frank", "Project E", {"Swift": 4, "AWS": 4}, {"Time management": 3, "Leadership": 4}, 5, "SSE"],
+                  ["Liam Wilson", "9", "Grace", "Project F", {"Go": 4, "Kubernetes": 2}, {"Problem-solving": 5, "Teamwork": 4}, 7, "SSE"],
+                  ["Mia Moore", "10", "Harry", "Project G", {"Java": 3, "React": 4}, {"Creativity": 5, "Communication": 4}, 1, "SE1"],
+              ]
+
+              return COLUMNS, SAMPLE_DATA
+
+          @tracer.capture_method
+          def analyze_employee_data(columns, data):
+              # Basic statistics
+              details = {
+                  "number_of_columns": len(columns),
+                  "number_of_rows": len(data),
+                  "seniority_counts": {},
+                  "total_years": 0,
+                  "avg_years_in_company": 0,
+                  "grouped_by_seniority": {},
+                  "avg_years_by_seniority": {}
+              }
+              
+              # Get seniority index for easier access
+              seniority_idx = columns.index("seniority")
+              years_idx = columns.index("years_in_company")
+              
+              # Initialize temporary storage for years by seniority
+              years_by_seniority = {}
+              
+              # Process each row
+              for row in data:
+                  seniority = row[seniority_idx]
+                  years = row[years_idx]
+                  
+                  # Update seniority counts
+                  details["seniority_counts"][seniority] = details["seniority_counts"].get(seniority, 0) + 1
+                  
+                  # Update total years
+                  details["total_years"] += years
+                  
+                  # Group by seniority
+                  if seniority not in details["grouped_by_seniority"]:
+                      details["grouped_by_seniority"][seniority] = []
+                  details["grouped_by_seniority"][seniority].append(dict(zip(columns, row)))
+                  
+                  # Accumulate years by seniority for average calculation
+                  if seniority not in years_by_seniority:
+                      years_by_seniority[seniority] = []
+                  years_by_seniority[seniority].append(years)
+              
+              # Calculate average years in company
+              details["avg_years_in_company"] = round(details["total_years"] / len(data), 2)
+              
+              # Calculate average years by seniority
+              for seniority, years_list in years_by_seniority.items():
+                  details["avg_years_by_seniority"][seniority] = round(sum(years_list) / len(years_list), 2)
+              
+              return details
+
+          # @app.get("/hello")
+          @tracer.capture_method
+          def test_logs():
+              try:
+                  # adding custom metrics
+                  # See: https://awslabs.github.io/aws-lambda-powertools-python/latest/core/metrics/
+                  metrics.add_metric(name="HelloWorldInvocations", unit=MetricUnit.Count, value=1)
+
+                  columns, data = create_table_structure()
+
+                  details = analyze_employee_data(columns, data)
+
+                  key_logs = {"result_details": details }
+
+                  logger.append_keys(**key_logs)
+
+                  all_rows_dict = {}
+                  data_id = columns.index("id")
+                  data_full_name = columns.index("full_name")
+                  for row in data:
+                      # Prepare the row as a dictionary
+                      row_dict = {
+                          "Full_Name": row[data_full_name],
+                          "ID": row[data_id]
+                      }
+
+                      all_rows_dict[row[data_id]] = row_dict
+
+                  logger.debug({"all_rows": all_rows_dict})
+
+                  # structured log
+                  # See: https://awslabs.github.io/aws-lambda-powertools-python/latest/core/logger/
+                  result = {
+                      "statusCode": 200,
+                      "message": json.dumps("Data retrieved successfully!"),
+                      "body": {
+                          "data": json.dumps(len(data))
+                      }
+                  }
+              except Exception as ex:
+                  result = {
+                      "statusCode": 400,
+                      "message": json.dumps("Data no retrieved!"),
+                      "body": {
+                          "data": "no_available"
+                      },
+                      "errors": ex
+                  }
+
+              logger.info(result)
+              
+              return result
+
+          # Enrich logging with contextual information from Lambda
+          @logger.inject_lambda_context(correlation_id_path=correlation_paths.API_GATEWAY_REST)
+          # Adding tracer
+          # See: https://awslabs.github.io/aws-lambda-powertools-python/latest/core/tracer/
+          @tracer.capture_lambda_handler
+          # ensures metrics are flushed upon request completion/failure and capturing ColdStart metric
+          @metrics.log_metrics(capture_cold_start_metric=True)
+          def lambda_handler(event: dict, context: LambdaContext) -> dict:
+              # return app.resolve(event, context)
+              return test_logs()
+
+      VpcConfig:
+        SubnetIds:
+          - !Ref PrivateSubnet1
+          - !Ref PrivateSubnet2
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+
+  LambdaPermissionForApiGateway:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref SampleLambdaFunction
+      Principal: apigateway.amazonaws.com
+  
+  ##############################
+  # Container Fleet: Security Group
+  ##############################
+  ContainerFleetSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Security group for container fleet instances"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: "POC-ContainerFleet-SG"
+
+  ##############################
+  # Container Fleet: Launch Template for ASG Instances (Using CloudWatch Agent)
+  ##############################
+  EC2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EC2InstanceRole
+  ContainerFleetLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: "POC-ContainerFleet-LT"
+      LaunchTemplateData:
+        InstanceType: !Ref InstanceType
+        ImageId: ami-0fc82f4dabc05670b # Updated valid AMI
+        KeyName: !Ref KeyName
+        SecurityGroupIds:
+          - !Ref ContainerFleetSecurityGroup
+        IamInstanceProfile:
+          Name: !Ref EC2InstanceProfile
+        UserData: !Base64 |
+          #!/bin/bash
+          yum update -y
+          # Install CloudWatch Agent
+          yum install -y amazon-cloudwatch-agent amazon-ssm-agent
+          # Start SSM Agent
+          systemctl enable amazon-ssm-agent
+          systemctl start amazon-ssm-agent
+          # Create CloudWatch Agent configuration file
+          cat <<'EOF' > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+          {
+            "agent": {
+              "metrics_collection_interval": 60,
+              "run_as_user": "root"
+            },
+            "metrics": {
+              "append_dimensions": {
+                "InstanceId": "${aws:InstanceId}"
+              },
+              "metrics_collected": {
+                "cpu": {
+                  "measurement": [
+                    "cpu_usage_idle",
+                    "cpu_usage_iowait",
+                    "cpu_usage_user",
+                    "cpu_usage_system"
+                  ],
+                  "metrics_collection_interval": 60,
+                  "totalcpu": true
+                },
+                "disk": {
+                  "measurement": [
+                    "used_percent"
+                  ],
+                  "metrics_collection_interval": 60,
+                  "resources": [
+                    "*"
+                  ]
+                },
+                "mem": {
+                  "measurement": [
+                    "mem_used_percent"
+                  ],
+                  "metrics_collection_interval": 60
+                }
+              }
+            }
+          }
+          EOF
+          # Start the CloudWatch Agent using the configuration file
+          /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
+
+  ##############################
+  # Container Fleet: Auto Scaling Group
+  ##############################
+  ContainerFleetASG:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: "POC-ContainerFleet-ASG"
+      LaunchTemplate:
+        LaunchTemplateId: !Ref ContainerFleetLaunchTemplate
+        Version: !GetAtt ContainerFleetLaunchTemplate.LatestVersionNumber
+      MinSize: '1'
+      MaxSize: '3'
+      DesiredCapacity: '1'
+      VPCZoneIdentifier:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      Tags:
+        - Key: Name
+          Value: "POC-ContainerFleet"
+          PropagateAtLaunch: true
+
+  ##############################
+  # Sample DynamoDB Table
+  ##############################
+  SampleDynamoDBTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: "POC-DynamoDB-Table"
+      AttributeDefinitions:
+        - AttributeName: "Id"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "Id"
+          KeyType: "HASH"
+      BillingMode: PAY_PER_REQUEST
+
+Outputs:
+  VPCId:
+    Description: "VPC Id"
+    Value: !Ref VPC
+
+  PublicSubnet1Id:
+    Description: "Public Subnet 1 Id"
+    Value: !Ref PublicSubnet1
+
+  PublicSubnet2Id:
+    Description: "Public Subnet 2 Id"
+    Value: !Ref PublicSubnet2
+
+  PrivateSubnet1Id:
+    Description: "Private Subnet 1 Id"
+    Value: !Ref PrivateSubnet1
+
+  PrivateSubnet2Id:
+    Description: "Private Subnet 2 Id"
+    Value: !Ref PrivateSubnet2
+
+  GrafanaWorkspaceId:
+    Description: "ID of the Managed Grafana workspace"
+    Value: !Ref GrafanaWorkspace
+
+  GrafanaWorkspaceUrl:
+    Description: "URL of the Managed Grafana workspace"
+    Value: !GetAtt GrafanaWorkspace.Endpoint
+
+  LambdaFunctionName:
+    Description: "Name of the sample Lambda function"
+    Value: !Ref SampleLambdaFunction
+
+  DynamoDBTableName:
+    Description: "Name of the sample DynamoDB table"
+    Value: !Ref SampleDynamoDBTable
+
+  ContainerFleetASGName:
+    Description: "Name of the container fleet Auto Scaling Group"
+    Value: !Ref ContainerFleetASG

@@ -81,15 +81,15 @@ echo "Deploying S3 bucket template..."
 aws cloudformation deploy \
   --region $region \
   --profile $profile \
-  --template-file template-s3-lambda.yaml \
+  --template-file cf-template-s3.yaml \
   --stack-name coe-aws-obs-poc-stack-s3 \
   --capabilities CAPABILITY_NAMED_IAM
 
 # Create the Lambda deployment package
 echo "Creating Lambda deployment package..."
 mkdir -p lambda_package
-pip3 install -r requirements.txt -t lambda_package/
-cp lambda_function.py lambda_package/
+cp lambda/ lambda_package/
+pip3 install -r lambda_package/requirements.txt -t lambda_package/
 cd lambda_package
 zip -r ../lambda_function.zip .
 cd ..
@@ -105,8 +105,11 @@ echo "Deploying main resources template..."
 aws cloudformation deploy \
   --region $region \
   --profile $profile \
-  --template-file template-ec2-grafana.yaml \
-  --stack-name coe-aws-obs-poc-stack \
+  --template-file cf-template-infra.yaml \
+  --stack-name coe-aws-obs-poc-stack-infra \
   --parameter-overrides KeyName=EC2KeyName InstanceType=t3.small \
   --capabilities CAPABILITY_NAMED_IAM \
   --tags POC=Observability
+
+# Clean artifacts
+rm -rf lambda_function.zip
