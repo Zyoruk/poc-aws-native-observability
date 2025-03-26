@@ -53,7 +53,7 @@ https://diagrams.mingrammer.com/docs/nodes/aws
    python script.py
    ```
 
-6. The script will generate two files in the `../docs` folder:
+6. The script will generate one file in the `../docs` folder:
    - `../docs/aws_observability_poc_diagram.png`
 
 ## Output
