@@ -8,7 +8,7 @@ if ! command -v python3 &> /dev/null; then
 fi
 
 # Check Python version
-python_version=$(python3.12 --version 2>&1 | awk '{print $2}')
+python_version=$(python --version 2>&1 | awk '{print $2}')
 if [[ "$python_version" != "3.12"* ]]; then
   echo "Python version 3.12 is required for the Lambda function. Current version: $python_version"
   echo "Please install Python 3.12 and try again."
@@ -88,12 +88,13 @@ aws cloudformation deploy \
 # Create the Lambda deployment package
 echo "Creating Lambda deployment package..."
 mkdir -p lambda_package
-cp lambda/ lambda_package/
+cp lambda/lambda_function.py lambda_package/
+cp lambda/requirements.txt lambda_package/
 pip3 install -r lambda_package/requirements.txt -t lambda_package/
 cd lambda_package
 zip -r ../lambda_function.zip .
+# 7z a -tzip -r ../lambda_function.zip .
 cd ..
-rm -rf lambda_package
 
 # Upload the Lambda deployment package to the S3 bucket
 bucket_name="coe-aws-obs-deployment-$region-$(aws sts get-caller-identity --query Account --output text --profile $profile)"
@@ -113,3 +114,4 @@ aws cloudformation deploy \
 
 # Clean artifacts
 rm -rf lambda_function.zip
+rm -rf lambda_package

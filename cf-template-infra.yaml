@@ -339,7 +339,7 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: "coe-aws-obs-lambda-cf"
-      Handler: index.lambda_handler
+      Handler: lambda_function.lambda_handler
       Runtime: python3.12
       Role: !GetAtt COEAWSOBSLambdaExecutionRole.Arn
       Layers:

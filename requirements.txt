@@ -1,3 +1,0 @@
-aws-lambda-powertools
-python-dotenv
-aws-xray-sdk
