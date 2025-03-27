@@ -13,9 +13,3 @@ Resources:
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
     DeletionPolicy: Delete # Delete the bucket when the stack is deleted
-
-Outputs:
-  LambdaDeploymentBucketName:
-    Value: !Ref COEAWSOBSS3Bucket
-    Export:
-      Name: lambda-deployment-bucket-name

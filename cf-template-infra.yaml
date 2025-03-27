@@ -179,20 +179,29 @@ Resources:
         Types:
           - REGIONAL
 
-  COEAWSOBSApiGatewayResource:
+  COEAWSOBSApiGatewayResourcePost:
     Type: AWS::ApiGateway::Resource
     Properties:
       ParentId: !GetAtt COEAWSOBSApiGatewayRestApi.RootResourceId
       RestApiId: !Ref COEAWSOBSApiGatewayRestApi
       PathPart: "test"
 
+  COEAWSOBSApiGatewayResourceGet:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt COEAWSOBSApiGatewayRestApi.RootResourceId
+      RestApiId: !Ref COEAWSOBSApiGatewayRestApi
+      PathPart: "test/{id}"
+
   COEAWSOBSApiGatewayMethodGet:
     Type: AWS::ApiGateway::Method
     Properties:
       RestApiId: !Ref COEAWSOBSApiGatewayRestApi
-      ResourceId: !Ref COEAWSOBSApiGatewayResource
+      ResourceId: !Ref COEAWSOBSApiGatewayResourceGet
       HttpMethod: GET
       AuthorizationType: NONE
+      RequestParameters:
+        method.request.path.id: true
       Integration:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
@@ -208,7 +217,7 @@ Resources:
     Type: AWS::ApiGateway::Method
     Properties:
       RestApiId: !Ref COEAWSOBSApiGatewayRestApi
-      ResourceId: !Ref COEAWSOBSApiGatewayResource
+      ResourceId: !Ref COEAWSOBSApiGatewayResourcePost
       HttpMethod: POST
       AuthorizationType: NONE
       Integration:
@@ -222,13 +231,42 @@ Resources:
             method.response.header.Access-Control-Allow-Headers: true
             method.response.header.Access-Control-Allow-Methods: true
   
-  COEAWSOBSApiGatewayMethodOptionsCORS:
+  COEAWSOBSApiGatewayMethodOptionsCORSPost:
     Type: AWS::ApiGateway::Method
     Properties:
       RestApiId: !Ref COEAWSOBSApiGatewayRestApi
-      ResourceId: !Ref COEAWSOBSApiGatewayResource
+      ResourceId: !Ref COEAWSOBSApiGatewayResourcePost
       HttpMethod: OPTIONS
       AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,OPTIONS'"
+            ResponseTemplates:
+              application/json: "{}"
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+  
+  COEAWSOBSApiGatewayMethodOptionsCORSGet:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref COEAWSOBSApiGatewayRestApi
+      ResourceId: !Ref COEAWSOBSApiGatewayResourceGet
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      RequestParameters:
+        method.request.path.id: true
       Integration:
         Type: MOCK
         IntegrationResponses:
@@ -254,7 +292,8 @@ Resources:
     DependsOn: 
       - COEAWSOBSApiGatewayMethodGet
       - COEAWSOBSApiGatewayMethodPost
-      - COEAWSOBSApiGatewayMethodOptionsCORS
+      - COEAWSOBSApiGatewayMethodOptionsCORSGet
+      - COEAWSOBSApiGatewayMethodOptionsCORSPost
     Properties:
       RestApiId: !Ref COEAWSOBSApiGatewayRestApi
       # StageName: "dev"
@@ -366,7 +405,7 @@ Resources:
         - arn:aws:lambda:us-east-2:017000801446:layer:AWSLambdaPowertoolsPythonV3-python312-x86_64:7
       Timeout: 30
       Code:
-        S3Bucket: !ImportValue lambda-deployment-bucket-name
+        S3Bucket: "coe-aws-obs-deployment-${AWS::Region}-${AWS::AccountId}"
         S3Key: "lambda/lambda_function.zip"
         # ZipFile:
       TracingConfig:
