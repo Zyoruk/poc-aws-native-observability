@@ -69,7 +69,20 @@ def put_item():
         return handle_exception(event, "put_item", e)
 
 @tracer.capture_method
-def create_response(event, status_code: int, request_data: any, response_data: any) -> dict:
+def get_status_code_from_header(event):
+    """Extract custom status code from header if present"""
+    headers = event.get("headers", {})
+    
+    if headers and "x-coe-obs-status-code" in headers:
+        try:
+            return int(headers["x-coe-obs-status-code"])
+        except (ValueError, TypeError):
+            logger.warning({"message": "Invalid x-coe-obs-status-code header value"})
+
+    return None
+
+@tracer.capture_method
+def create_response(event, status_code: int, request_data: any, response_data: any):
     """Generate a standardized API response with CORS headers"""
     response_body = {
         "request": request_data,
@@ -85,24 +98,11 @@ def create_response(event, status_code: int, request_data: any, response_data: a
             "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Coe-Obs-Status-Code",
             "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
         },
-        "body": json.dumps(response_body)
+        "body": response_body
     }
     
     logger.info({"final_response": response})
-    return response
-
-@tracer.capture_method
-def get_status_code_from_header(event):
-    """Extract custom status code from header if present"""
-    headers = event.get("headers", {})
-    
-    if headers and "x-coe-obs-status-code" in headers:
-        try:
-            return int(headers["x-coe-obs-status-code"])
-        except (ValueError, TypeError):
-            logger.warning({"message": "Invalid x-coe-obs-status-code header value"})
-
-    return None
+    return response, response["statusCode"]
 
 @tracer.capture_method
 def handle_exception(event, operation: str, error: Exception):

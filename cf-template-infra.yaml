@@ -277,23 +277,16 @@ Resources:
           ThrottlingBurstLimit: 5000
           ThrottlingRateLimit: 10000
       AccessLogSetting:
-        DestinationArn: !GetAtt COEAWSOBSApiGatewayAccessLogGroup.Arn
+        DestinationArn: !GetAtt COEAWSOBSApiGatewayLogGroup.Arn
         Format: '{ "APIGateway" : { "requestId" : "$context.requestId", "ip" : "$context.identity.sourceIp", "caller" : "$context.identity.caller", "user" : "$context.identity.user", "requestTime" : "$context.requestTime", "httpMethod" : "$context.httpMethod", "resourcePath" : "$context.resourcePath", "status" : "$context.status", "protocol" : "$context.protocol", "responseLength" : "$context.responseLength", "type" : "$context.error.responseType", "errorMessage" : "$context.error.message", "xrayTraceId" : "$context.xrayTraceId" }, "Authorizer" : { "authorizerError" : "$context.authorizer.error", "authorizerErrorMessage" : "$context.authorizer.error.errorMessage", "authorizerStatus" : "$context.authorizer.status", "authorizerRequestId" : "$context.authorizer.requestId", "authenticateError" : "$context.authenticate.error", "authPrincipalId" : "$context.authorizer.principalId", "authToken" : "$context.authorizer.token" }, "Integration" : { "status" : "$context.integration.status", "error" : "$context.integration.error", "requestId" : "$context.integration.requestId" }, "WAF" : { "wafResponse" : "$context.wafResponseCode", "wafStatus" : "$context.waf.status", "wafError" : "$context.waf.error" } }'
 
   ##############################
-  # API Gateway Account Configuration for CloudWatch
+  # API Gateway Logging Configuration
   ##############################
-  COEAWSOBSApiGatewayAccessLogGroup:
+  COEAWSOBSApiGatewayLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub "/aws/apigateway/${COEAWSOBSApiGatewayRestApi}"
-      RetentionInDays: 30
-  
-  # COEAWSOBSLambdaLogGroup:
-  #   Type: AWS::Logs::LogGroup
-  #   Properties:
-  #     LogGroupName: !Sub "/aws/lambda/${COEAWSOBSSampleLambdaFunction}"
-  #     RetentionInDays: 14
+      LogGroupName: !Sub "/aws/apigateway/coe-aws-obs-agw-${COEAWSOBSApiGatewayRestApi}-logs"
     
   COEAWSOBSApiGatewayAccount:
     Type: AWS::ApiGateway::Account
@@ -312,6 +305,33 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs
+
+  ##############################
+  # Custom Domain for API Gateway
+  ##############################
+  # COEAWSOBSApiGatewayCustomDomainCertificate:
+  #   Type: AWS::CertificateManager::Certificate
+  #   Properties:
+  #     DomainName: "api.encora.com"  # Replace with your actual domain
+  #     ValidationMethod: DNS
+  #     SubjectAlternativeNames:
+  #       - "*.encora.com"  # Optional: include wildcard subdomain
+
+  # COEAWSOBSApiGatewayCustomDomain:
+  #   Type: AWS::ApiGateway::DomainName
+  #   Properties:
+  #     DomainName: "api.encora.com"  # Replace with your actual domain
+  #     CertificateArn: !Ref COEAWSOBSApiGatewayCustomDomainCertificate
+  #     EndpointConfiguration:
+  #       Types:
+  #         - REGIONAL
+
+  # COEAWSOBSApiGatewayBasePathMapping:
+  #   Type: AWS::ApiGateway::BasePathMapping
+  #   Properties:
+  #     DomainName: !Ref COEAWSOBSApiGatewayCustomDomain
+  #     RestApiId: !Ref COEAWSOBSApiGatewayRestApi
+  #     Stage: !Ref COEAWSOBSApiGatewayStage
 
   ##############################
   # Sample Lambda Function with VPC Config
@@ -654,6 +674,7 @@ Resources:
   ##############################
   COEAWSOBSSampleDynamoDBTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain # Keep existing data
     Properties:
       TableName: "coe-aws-obs-dynamodb-table"
       AttributeDefinitions:
@@ -1105,3 +1126,11 @@ Outputs:
     Value: !Sub
       - http://${PublicIp}:9090
       - PublicIp: !GetAtt COEAWSOBSPrometheusInstance.PublicIp
+  
+  # ApiGatewayCustomDomainName:
+  #   Description: "Custom Domain Name for API Gateway"
+  #   Value: !Ref COEAWSOBSApiGatewayCustomDomain
+
+  # ApiGatewayCustomDomainDistributionDomainName:
+  #   Description: "Distribution Domain Name for Custom Domain"
+  #   Value: !GetAtt COEAWSOBSApiGatewayCustomDomain.DistributionDomainName
