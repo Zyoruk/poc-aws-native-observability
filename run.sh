@@ -65,17 +65,6 @@ echo "Emptying S3 bucket: $bucket_name..."
 aws s3 rm s3://$bucket_name --recursive --region $region --profile $profile
 echo "S3 bucket emptied."
 
-# Delete the S3 bucket stack if it exists
-if aws cloudformation describe-stacks --region $region --profile $profile --stack-name coe-aws-obs-poc-stack-s3 &> /dev/null; then
-  echo "Deleting S3 bucket CloudFormation stack: coe-aws-obs-poc-stack-s3..."
-  aws cloudformation delete-stack --region $region --profile $profile --stack-name coe-aws-obs-poc-stack-s3
-
-  # Wait for the S3 bucket stack to be deleted
-  echo "Waiting for S3 bucket CloudFormation stack to be deleted..."
-  aws cloudformation wait stack-delete-complete --region $region --profile $profile --stack-name coe-aws-obs-poc-stack-s3
-  echo "S3 bucket CloudFormation stack deleted."
-fi
-
 # Deploy the first CloudFormation template to create the S3 bucket
 echo "Deploying S3 bucket template..."
 aws cloudformation deploy \
