@@ -1,6 +1,63 @@
 #!/bin/bash
 # Request for profile and region as flags. Example: sh run.sh LuisSimonEncora us-east-2
 
+# Function to display usage information
+usage() {
+    echo "Usage: $0 [profile] [region]"
+    echo "If no arguments are provided, defaults will be used:"
+    echo "  Profile: default"
+    echo "  Region: us-east-2"
+    echo "Options:"
+    echo "  --help    Display this help message"
+    exit 1
+}
+
+# Check if --help flag is used
+if [[ "$1" == "--help" ]]; then
+    usage
+fi
+
+# Set default values
+DEFAULT_PROFILE="default"
+DEFAULT_REGION="us-east-2"
+
+# Validate and set profile
+if [[ $# -ge 1 && -n "$1" ]]; then
+    # Check if the provided profile exists in AWS credentials
+    if ! aws configure list-profiles 2>/dev/null | grep -q "^$1$"; then
+        echo "Error: Profile '$1' does not exist in AWS credentials."
+        echo "Available profiles:"
+        aws configure list-profiles 2>/dev/null
+        exit 1
+    fi
+    profile="$1"
+else
+    profile="$DEFAULT_PROFILE"
+fi
+
+# Validate and set region
+if [[ $# -eq 2 && -n "$2" ]]; then
+    # Basic region name validation (simple regex for AWS region format)
+    if [[ ! "$2" =~ ^[a-z]{2}-[a-z]+-[1-9][0-9]?$ ]]; then
+        echo "Error: Invalid region format. Must be in format like us-east-2, eu-west-1, etc."
+        exit 1
+    fi
+    region="$2"
+else
+    region="$DEFAULT_REGION"
+fi
+
+# Validate input argument count
+if [[ $# -gt 2 ]]; then
+    echo "Error: Too many arguments"
+    usage
+fi
+
+# Print the profile and region
+echo "Using AWS Profile: $profile"
+echo "Using AWS Region: $region"
+
+# Rest of the script remains the same as in the original version
 # Check if Python is installed
 if ! command -v python3 &> /dev/null; then
   echo "Python3 is not installed. Please install Python3 to proceed."
@@ -21,55 +78,25 @@ if ! command -v pip &> /dev/null; then
   exit 1
 fi
 
-# Validate input arguments
-if [ $# -eq 0 ]; then
-  echo "No arguments supplied"
-  exit 1
-fi
-if [ $1 == "--help" ]; then
-  echo "Usage: sh run.sh <profile> <region>"
-  exit 1
-fi
-if [ $# -ne 2 ]; then
-  echo "Usage: sh run.sh <profile> <region>"
-  exit 1
-fi
-if [ -z "$1" ]; then
-  echo "Profile is empty"
-  exit 1
-fi
-if [ -z "$2" ]; then
-  echo "Region is empty"
-  exit 1
-fi
-
-profile=$1
-region=$2
-
-# Print the profile and region
-echo "Profile: $profile"
-echo "Region: $region"
-
 # Create an EC2 key pair named "EC2KeyName" and save the private key to a file.
 # If it already exists, delete it first.
-aws ec2 delete-key-pair --region $region --profile $profile --key-name EC2KeyName
-
-rm EC2KeyName.pem
+aws ec2 delete-key-pair --region "$region" --profile "$profile" --key-name EC2KeyName
+rm -f EC2KeyName.pem
 
 # Create the key pair and save the private key to a file.
-aws ec2 create-key-pair --region $region --profile $profile --key-name EC2KeyName --query 'KeyMaterial' --output text > EC2KeyName.pem
+aws ec2 create-key-pair --region "$region" --profile "$profile" --key-name EC2KeyName --query 'KeyMaterial' --output text > EC2KeyName.pem
 
 # Empty the S3 bucket
-bucket_name="coe-aws-obs-deployment-$region-$(aws sts get-caller-identity --query Account --output text --profile $profile)"
+bucket_name="coe-aws-obs-deployment-$region-$(aws sts get-caller-identity --query Account --output text --profile "$profile")"
 echo "Emptying S3 bucket: $bucket_name..."
-aws s3 rm s3://$bucket_name --recursive --region $region --profile $profile
+aws s3 rm "s3://$bucket_name" --recursive --region "$region" --profile "$profile"
 echo "S3 bucket emptied."
 
 # Deploy the first CloudFormation template to create the S3 bucket
 echo "Deploying S3 bucket template..."
 aws cloudformation deploy \
-  --region $region \
-  --profile $profile \
+  --region "$region" \
+  --profile "$profile" \
   --template-file cf-template-s3.yaml \
   --stack-name coe-aws-obs-poc-stack-s3 \
   --capabilities CAPABILITY_NAMED_IAM
@@ -86,15 +113,15 @@ zip -r ../lambda_function.zip .
 cd ..
 
 # Upload the Lambda deployment package to the S3 bucket
-bucket_name="coe-aws-obs-deployment-$region-$(aws sts get-caller-identity --query Account --output text --profile $profile)"
+bucket_name="coe-aws-obs-deployment-$region-$(aws sts get-caller-identity --query Account --output text --profile "$profile")"
 echo "Uploading Lambda deployment package to S3..."
-aws s3 cp lambda_function.zip s3://$bucket_name/lambda/lambda_function.zip --region $region --profile $profile
+aws s3 cp lambda_function.zip "s3://$bucket_name/lambda/lambda_function.zip" --region "$region" --profile "$profile"
 
 # Deploy the second CloudFormation template to create the rest of the resources
 echo "Deploying main resources template..."
 aws cloudformation deploy \
-  --region $region \
-  --profile $profile \
+  --region "$region" \
+  --profile "$profile" \
   --template-file cf-template-infra.yaml \
   --stack-name coe-aws-obs-poc-stack-infra \
   --parameter-overrides KeyName=EC2KeyName InstanceType=t3.small \

@@ -89,8 +89,6 @@ def create_response(event, status_code: int, request_data: any, response_data: a
         "response": response_data if isinstance(response_data, dict) else {"message": response_data}
     }
 
-    log_query("lambda_result", response_body)
-
     response = {
         "statusCode": get_status_code_from_header(event) or status_code,
         "headers": {
@@ -101,7 +99,7 @@ def create_response(event, status_code: int, request_data: any, response_data: a
         "body": response_body
     }
     
-    logger.info({"final_response": response})
+    log_query("lambda_result", response)
     return response, response["statusCode"]
 
 @tracer.capture_method

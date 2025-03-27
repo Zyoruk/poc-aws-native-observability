@@ -189,9 +189,9 @@ Resources:
   COEAWSOBSApiGatewayResourceGet:
     Type: AWS::ApiGateway::Resource
     Properties:
-      ParentId: !GetAtt COEAWSOBSApiGatewayRestApi.RootResourceId
+      ParentId: !GetAtt COEAWSOBSApiGatewayResourcePost.ResourceId
       RestApiId: !Ref COEAWSOBSApiGatewayRestApi
-      PathPart: "test/{id}"
+      PathPart: "{id}"
 
   COEAWSOBSApiGatewayMethodGet:
     Type: AWS::ApiGateway::Method
@@ -405,9 +405,8 @@ Resources:
         - arn:aws:lambda:us-east-2:017000801446:layer:AWSLambdaPowertoolsPythonV3-python312-x86_64:7
       Timeout: 30
       Code:
-        S3Bucket: "coe-aws-obs-deployment-${AWS::Region}-${AWS::AccountId}"
+        S3Bucket: !ImportValue lambda-deployment-bucket-name
         S3Key: "lambda/lambda_function.zip"
-        # ZipFile:
       TracingConfig:
         Mode: Active
       Environment:
@@ -713,7 +712,6 @@ Resources:
   ##############################
   COEAWSOBSSampleDynamoDBTable:
     Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain # Keep existing data
     Properties:
       TableName: "coe-aws-obs-dynamodb-table"
       AttributeDefinitions:
