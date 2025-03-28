@@ -69,29 +69,6 @@ def put_item():
         return handle_exception(event, "put_item", e)
 
 @tracer.capture_method
-def create_response(event, status_code: int, request_data: any, response_data: any) -> dict:
-    """Generate a standardized API response with CORS headers"""
-    response_body = {
-        "request": request_data,
-        "response": response_data if isinstance(response_data, dict) else {"message": response_data}
-    }
-
-    log_query("lambda_result", response_body)
-
-    response = {
-        "statusCode": get_status_code_from_header(event) or status_code,
-        "headers": {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Coe-Obs-Status-Code",
-            "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-        },
-        "body": json.dumps(response_body)
-    }
-    
-    logger.info({"final_response": response})
-    return response
-
-@tracer.capture_method
 def get_status_code_from_header(event):
     """Extract custom status code from header if present"""
     headers = event.get("headers", {})
@@ -103,6 +80,27 @@ def get_status_code_from_header(event):
             logger.warning({"message": "Invalid x-coe-obs-status-code header value"})
 
     return None
+
+@tracer.capture_method
+def create_response(event, status_code: int, request_data: any, response_data: any):
+    """Generate a standardized API response with CORS headers"""
+    response_body = {
+        "request": request_data,
+        "response": response_data if isinstance(response_data, dict) else {"message": response_data}
+    }
+
+    response = {
+        "statusCode": get_status_code_from_header(event) or status_code,
+        "headers": {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Coe-Obs-Status-Code",
+            "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+        },
+        "body": response_body
+    }
+    
+    log_query("lambda_result", response)
+    return response, response["statusCode"]
 
 @tracer.capture_method
 def handle_exception(event, operation: str, error: Exception):
