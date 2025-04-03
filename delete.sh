@@ -32,12 +32,12 @@ echo "Region: $region"
 bucket_name="coe-aws-obs-deployment-$region-$(aws sts get-caller-identity --query Account --output text --profile $profile)"
 
 # Delete the main CloudFormation stack (template-ec2-grafana.yaml)
-echo "Deleting main CloudFormation stack: coe-aws-obs-poc-stack..."
-aws cloudformation delete-stack --region $region --profile $profile --stack-name coe-aws-obs-poc-stack
+echo "Deleting main CloudFormation stack: coe-aws-obs-poc-stack-infra..."
+aws cloudformation delete-stack --region $region --profile $profile --stack-name coe-aws-obs-poc-stack-infra
 
 # Wait for the main stack to be deleted
 echo "Waiting for main CloudFormation stack to be deleted..."
-aws cloudformation wait stack-delete-complete --region $region --profile $profile --stack-name coe-aws-obs-poc-stack
+aws cloudformation wait stack-delete-complete --region $region --profile $profile --stack-name coe-aws-obs-poc-stack-infra
 echo "Main CloudFormation stack deleted."
 
 # Empty the S3 bucket
