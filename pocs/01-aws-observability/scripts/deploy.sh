@@ -110,9 +110,9 @@ mkdir -p "$POC_DIR/lambda_package"
 cp "$POC_DIR/lambda/lambda_function.py" "$POC_DIR/lambda_package/"
 cp "$POC_DIR/lambda/requirements.txt" "$POC_DIR/lambda_package/"
 pip3 install -r "$POC_DIR/lambda_package/requirements.txt" -t "$POC_DIR/lambda_package/"
-cd "$POC_DIR/lambda_package"
+pushd "$POC_DIR/lambda_package"
 zip -r "../lambda_function.zip" .
-cd "$SCRIPT_DIR"
+popd
 
 # Upload the Lambda deployment package to the S3 bucket
 bucket_name="coe-aws-obs-deployment-$region-$(aws sts get-caller-identity --query Account --output text --profile "$profile")"
