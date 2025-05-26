@@ -1,5 +1,5 @@
 #!/bin/bash
-# Request for profile and region as flags. Example: sh run.sh LuisSimonEncora us-east-2
+# Request for profile and region as flags. Example: sh deploy.sh LuisSimonEncora us-east-2
 
 # Function to display usage information
 usage() {
@@ -57,7 +57,10 @@ fi
 echo "Using AWS Profile: $profile"
 echo "Using AWS Region: $region"
 
-# Rest of the script remains the same as in the original version
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+POC_DIR="$(dirname "$SCRIPT_DIR")"
+
 # Check if Python is installed
 if ! command -v python3 &> /dev/null; then
   echo "Python3 is not installed. Please install Python3 to proceed."
@@ -81,10 +84,10 @@ fi
 # Create an EC2 key pair named "EC2KeyName" and save the private key to a file.
 # If it already exists, delete it first.
 aws ec2 delete-key-pair --region "$region" --profile "$profile" --key-name EC2KeyName
-rm -f EC2KeyName.pem
+rm -f "$POC_DIR/EC2KeyName.pem"
 
 # Create the key pair and save the private key to a file.
-aws ec2 create-key-pair --region "$region" --profile "$profile" --key-name EC2KeyName --query 'KeyMaterial' --output text > EC2KeyName.pem
+aws ec2 create-key-pair --region "$region" --profile "$profile" --key-name EC2KeyName --query 'KeyMaterial' --output text > "$POC_DIR/EC2KeyName.pem"
 
 # Empty the S3 bucket
 bucket_name="coe-aws-obs-deployment-$region-$(aws sts get-caller-identity --query Account --output text --profile "$profile")"
@@ -97,37 +100,39 @@ echo "Deploying S3 bucket template..."
 aws cloudformation deploy \
   --region "$region" \
   --profile "$profile" \
-  --template-file cf-template-s3.yaml \
+  --template-file "$POC_DIR/infrastructure/cf-template-s3.yaml" \
   --stack-name coe-aws-obs-poc-stack-s3 \
   --capabilities CAPABILITY_NAMED_IAM
 
 # Create the Lambda deployment package
 echo "Creating Lambda deployment package..."
-mkdir -p lambda_package
-cp lambda/lambda_function.py lambda_package/
-cp lambda/requirements.txt lambda_package/
-pip3 install -r lambda_package/requirements.txt -t lambda_package/
-cd lambda_package
-zip -r ../lambda_function.zip .
-# 7z a -tzip -r ../lambda_function.zip .
-cd ..
+mkdir -p "$POC_DIR/lambda_package"
+cp "$POC_DIR/lambda/lambda_function.py" "$POC_DIR/lambda_package/"
+cp "$POC_DIR/lambda/requirements.txt" "$POC_DIR/lambda_package/"
+pip3 install -r "$POC_DIR/lambda_package/requirements.txt" -t "$POC_DIR/lambda_package/"
+pushd "$POC_DIR/lambda_package"
+zip -r "../lambda_function.zip" .
+popd
 
 # Upload the Lambda deployment package to the S3 bucket
 bucket_name="coe-aws-obs-deployment-$region-$(aws sts get-caller-identity --query Account --output text --profile "$profile")"
 echo "Uploading Lambda deployment package to S3..."
-aws s3 cp lambda_function.zip "s3://$bucket_name/lambda/lambda_function.zip" --region "$region" --profile "$profile"
+aws s3 cp "$POC_DIR/lambda_function.zip" "s3://$bucket_name/lambda/lambda_function.zip" --region "$region" --profile "$profile"
 
 # Deploy the second CloudFormation template to create the rest of the resources
 echo "Deploying main resources template..."
 aws cloudformation deploy \
   --region "$region" \
   --profile "$profile" \
-  --template-file cf-template-infra.yaml \
+  --template-file "$POC_DIR/infrastructure/cf-template-infra.yaml" \
   --stack-name coe-aws-obs-poc-stack-infra \
   --parameter-overrides KeyName=EC2KeyName InstanceType=t3.small \
   --capabilities CAPABILITY_NAMED_IAM \
   --tags POC=Observability
 
 # Clean artifacts
-rm -rf lambda_function.zip
-rm -rf lambda_package
+rm -rf "$POC_DIR/lambda_function.zip"
+rm -rf "$POC_DIR/lambda_package"
+
+echo "Deployment completed successfully!"
+echo "Check the AWS Console for the deployed resources."

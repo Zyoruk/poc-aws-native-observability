@@ -1,97 +1,215 @@
-# Observability POC CloudFormation Template
+# COE AWS Observability - Multi-POC Repository
 
-This repository contains CloudFormation templates that provision a Proof-of-Concept (POC) observability solution on AWS. The templates set up a compact, dedicated VPC and deploy several key resources:
+This repository contains multiple Proof-of-Concepts (POCs) demonstrating various AWS solutions and best practices. Each POC is self-contained with its own infrastructure, documentation, and deployment scripts.
 
-- **AWS Managed Grafana Workspace:**  
-  Pre-configured with a CloudWatch data source to visualize metrics from various AWS services.
-- **Sample Lambda Function:**  
-  Deployed within private subnets for secure execution, demonstrating how to monitor serverless functions via CloudWatch.
-- **Container Fleet (Auto Scaling Group):**  
-  EC2 instances running the Amazon CloudWatch Agent to push host-level metrics (CPU, memory, disk) to CloudWatch. This simulates a dynamic fleet of container hosts.
-- **DynamoDB Table:**  
-  A sample table to illustrate monitoring of a fully managed AWS database service via CloudWatch.
-- **Networking Components:**  
-  A compact VPC with public and private subnets, an Internet Gateway, a NAT Gateway, and the necessary route tables and associations to ensure secure and efficient network connectivity.
+## Repository Structure
 
-![Application Composer diagram for the Cloudformation Template](docs/application-composer-poc-observability.png "Application Diagram")
----
+```
+coe-aws-obs/
+├── README.md                          # This file - repository overview
+├── .gitignore                         # Git ignore patterns
+├── shared/                            # Shared utilities and resources
+│   └── scripts/                       # Common deployment utilities
+│       ├── deploy-utils.sh           # Deployment helper functions
+│       ├── cleanup-utils.sh          # Cleanup helper functions
+│       └── create-poc.sh             # Script to create new POCs
+├── pocs/                              # Individual POCs
+│   ├── 01-aws-observability/          # AWS Observability POC
+│   │   ├── README.md                  # POC-specific documentation
+│   │   ├── infrastructure/            # CloudFormation templates
+│   │   │   ├── cf-template-s3.yaml   # S3 bucket template
+│   │   │   └── cf-template-infra.yaml # Main infrastructure template
+│   │   ├── lambda/                    # Lambda function code
+│   │   │   ├── lambda_function.py    # Function implementation
+│   │   │   └── requirements.txt      # Python dependencies
+│   │   ├── scripts/                   # Deployment scripts
+│   │   │   ├── deploy.sh             # Deployment script
+│   │   │   └── cleanup.sh            # Cleanup script
+│   │   ├── docs/                      # Documentation and diagrams
+│   │   │   ├── poc-aws-obs-architecture-diagram.md
+│   │   │   ├── aws_observability_poc_diagram.png
+│   │   │   └── application-composer-poc-observability.png
+│   │   └── tools/                     # POC-specific tools
+│   │       └── diagram-generator/     # Diagram generation utilities
+│   │           ├── script.py
+│   │           ├── requirements.txt
+│   │           └── README.md
+│   └── template/                      # Template for new POCs
+│       ├── README.template.md         # Template README
+│       ├── infrastructure/            # Template infrastructure directory
+│       ├── src/                       # Template source code directory
+│       ├── scripts/                   # Template scripts directory
+│       └── docs/                      # Template documentation directory
+└── docs/                              # Repository-level documentation
+    ├── getting-started.md             # Comprehensive setup guide
+    └── poc-guidelines.md              # Standards for creating POCs
+```
 
-## Resource Breakdown
+## Available POCs
 
-### 1. VPC and Networking
+### 1. AWS Observability POC (`pocs/01-aws-observability/`)
 
-- **VPC (10.0.0.0/24):**  
-  Provides an isolated network for all resources. A compact /24 CIDR block was chosen to minimize wasted IP addresses while leaving room for future expansion.
+A comprehensive observability solution demonstrating:
+- AWS Managed Grafana with CloudWatch integration
+- Lambda function monitoring in private subnets
+- EC2 Auto Scaling Group with CloudWatch Agent
+- DynamoDB monitoring
+- Complete VPC setup with security best practices
 
-- **Internet Gateway & VPC Gateway Attachment:**  
-  The Internet Gateway allows public internet connectivity. The gateway attachment connects the IGW to our VPC.
+**Quick Start:**
+```bash
+cd pocs/01-aws-observability
+./scripts/deploy.sh <AWS_PROFILE> <AWS_REGION>
+```
 
-- **Public Subnets (10.0.0.0/27 and 10.0.0.32/27):**  
-  These subnets are used for launching EC2 instances (the container fleet). They’re configured to assign public IP addresses on launch.
-
-- **Private Subnets (10.0.0.64/27 and 10.0.0.96/27):**  
-  Dedicated for resources that do not need to be directly accessible from the internet—such as the Lambda function.
-
-- **Route Tables and Associations:**  
-  - **Public Route Table:** Routes all outbound traffic (0.0.0.0/0) through the Internet Gateway.  
-  - **Private Route Table:** Routes traffic from the private subnets to the internet via the NAT Gateway.
-
-- **NAT Gateway (with Elastic IP):**  
-  Enables resources in the private subnets to access the internet (for example, to download updates or send metrics) while keeping them isolated from inbound public access.
-
----
-
-### 2. Observability Resources
-
-- **AWS Managed Grafana Workspace:**  
-  A fully managed Grafana instance pre-configured with a CloudWatch data source. This allows you to visualize metrics from CloudWatch (including those pushed by the CloudWatch Agent on the EC2 instances, as well as metrics from Lambda and DynamoDB).  
-  - **Grafana Service Role:** Grants the Managed Grafana workspace the necessary permissions (e.g., CloudWatchReadOnlyAccess) to fetch metrics.
-
----
-
-### 3. Application Resources
-
-- **Sample Lambda Function:**  
-  A basic Node.js function deployed into private subnets. It logs a message and returns a simple response.  
-  - **Lambda Execution Role:** Uses `AWSLambdaBasicExecutionRole` and `AWSLambdaVPCAccessExecutionRole` so the function can write logs and manage its network interfaces when running in the VPC.  
-  - **Lambda Security Group:** Controls inbound and outbound traffic for the Lambda function within the VPC.
-
-- **Container Fleet (Auto Scaling Group):**  
-  A dynamic group of EC2 instances launched in the public subnets to simulate a containerized environment.
-  - **Launch Template:** Defines the EC2 instance configuration including instance type, key pair, security group, and a user data script.  
-    - **User Data Script:** Installs and configures the Amazon CloudWatch Agent, which collects host-level metrics (e.g., CPU, disk, memory) and pushes them to CloudWatch.
-  - **Container Fleet Security Group:** Allows SSH access (for administration) and unrestricted outbound traffic.
-
-- **Sample DynamoDB Table:**  
-  A simple DynamoDB table using on-demand billing (PAY_PER_REQUEST) to demonstrate monitoring of a managed database service via CloudWatch.
-
----
-
-### 4. EC2 Grafana Instance
-
-- **Grafana EC2 Instance:**  
-  An EC2 instance running Grafana, pre-configured to visualize metrics from CloudWatch.
-  - **Grafana EC2 Role:** Grants the necessary permissions to the EC2 instance to read metrics from CloudWatch.
-  - **Grafana Security Group:** Controls inbound and outbound traffic for the Grafana instance.
-
-> **Note:** The EC2 Grafana instance is intended to be a temporary solution. The preferred approach is to use the AWS Managed Grafana for a fully managed and scalable observability solution.
+[📖 Full Documentation](pocs/01-aws-observability/README.md)
 
 ---
 
-## Deployment Instructions
+## Getting Started
 
 ### Prerequisites
-1. have AWS CLI@v2 installed
 
-### Steps
-1. make sure to login to AWS in the CLI
-2. `$ cd coe-aws-observability`
-3. `$ sh run.sh <PROFILE_NAME> <REGION> <TEMPLATE>` where:
-    - `<PROFILE_NAME>` is the AWS CLI profile name
-    - `<REGION>` is the AWS region to deploy the resources
-    - `<TEMPLATE>` is the path to the CloudFormation template file (e.g., `template.yaml` or `template-ec2-grafana.yaml`)
+1. **AWS CLI v2** - [Installation Guide](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
+2. **Valid AWS Credentials** - Configure with `aws configure`
+3. **Python 3.12** - Required for Lambda functions
+4. **Bash Shell** - For running deployment scripts
 
-### To delete the resources
-3. `$ sh delete.sh <PROFILE_NAME> <REGION>` where:
-    - `<PROFILE_NAME>` is the AWS CLI profile name
-    - `<REGION>` is the AWS region to deploy the resources
+### Quick Setup
+
+1. **Clone the repository:**
+   ```bash
+   git clone git@github.com:Zyoruk/poc-aws-native-observability.git
+   cd poc-aws-native-observability
+   ```
+
+2. **Choose a POC:**
+   ```bash
+   cd pocs/[poc-name]
+   ```
+
+3. **Deploy:**
+   ```bash
+   ./scripts/deploy.sh <AWS_PROFILE> <AWS_REGION>
+   ```
+
+4. **Cleanup when done:**
+   ```bash
+   ./scripts/cleanup.sh <AWS_PROFILE> <AWS_REGION>
+   ```
+
+## Creating New POCs
+
+### Using the Automated Script
+
+The easiest way to create a new POC is using the provided script:
+
+```bash
+./shared/scripts/create-poc.sh 02 serverless-pipeline "Serverless data processing pipeline"
+```
+
+This will:
+- Create the directory structure from the template
+- Generate basic deployment and cleanup scripts
+- Create a starter CloudFormation template
+- Update the README with your POC details
+
+### Manual Creation
+
+1. **Copy the template:**
+   ```bash
+   cp -r pocs/template pocs/[new-poc-name]
+   ```
+
+2. **Update the README:**
+   - Edit `pocs/[new-poc-name]/README.md`
+   - Replace placeholders with actual content
+
+3. **Add your infrastructure:**
+   - CloudFormation templates in `infrastructure/`
+   - Source code in `src/`
+   - Deployment scripts in `scripts/`
+
+4. **Update this main README** to include your new POC
+
+### POC Naming Convention
+
+- Use descriptive, kebab-case names: `02-serverless-data-pipeline`
+- Include a number prefix for ordering: `03-container-security`
+- Keep names concise but clear
+
+## Shared Resources
+
+### Deployment Utilities (`shared/scripts/`)
+
+Common functions for AWS operations:
+- **`deploy-utils.sh`**: Validation, key management, stack operations
+- **`cleanup-utils.sh`**: Resource cleanup and verification
+- **`create-poc.sh`**: Automated POC creation from template
+
+### Usage in POC Scripts
+
+```bash
+# Source shared utilities
+source ../../shared/scripts/deploy-utils.sh
+
+# Use shared functions
+validate_aws_profile "$profile"
+manage_ec2_keypair "$profile" "$region" "MyKeyName" "$POC_DIR"
+wait_for_stack "$profile" "$region" "$stack_name" "create-complete"
+```
+
+## Best Practices
+
+### Infrastructure as Code
+- Use CloudFormation for all AWS resources
+- Parameterize templates for reusability
+- Include proper resource tagging
+
+### Security
+- Deploy sensitive resources in private subnets
+- Use least-privilege IAM policies
+- Rotate access keys regularly
+
+### Cost Management
+- Use appropriate instance sizes
+- Implement auto-scaling where beneficial
+- Clean up resources after testing
+
+### Documentation
+- Include architecture diagrams
+- Document deployment steps clearly
+- Provide troubleshooting guides
+
+## Contributing
+
+1. **Create a new POC** using the template structure or automated script
+2. **Follow naming conventions** and best practices
+3. **Test thoroughly** before committing
+4. **Update documentation** including this main README
+5. **Submit a pull request** with clear description
+
+## Support
+
+For questions or issues:
+1. Check the individual POC documentation
+2. Review troubleshooting sections in [docs/getting-started.md](docs/getting-started.md)
+3. Follow the guidelines in [docs/poc-guidelines.md](docs/poc-guidelines.md)
+4. Create an issue in the repository
+
+## Documentation
+
+- **[Getting Started Guide](docs/getting-started.md)** - Complete setup and usage instructions
+- **[POC Development Guidelines](docs/poc-guidelines.md)** - Standards and best practices for creating POCs
+
+
+## POC Index
+
+| POC | Description | Status | Technologies |
+|-----|-------------|--------|--------------|
+| [01-aws-observability](pocs/01-aws-observability/) | Comprehensive AWS monitoring solution | ✅ Active | Grafana, CloudWatch, Lambda, EC2, DynamoDB |
+| [template](pocs/template/) | Template for new POCs | 📋 Template | - |
+
+---
+
+*Repository restructured for multi-POC organization - Ready for scaling with additional proof-of-concepts*
