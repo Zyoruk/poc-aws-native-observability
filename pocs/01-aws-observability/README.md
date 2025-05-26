@@ -6,6 +6,24 @@ This POC demonstrates a comprehensive observability solution on AWS using CloudF
 
 ![Application Composer diagram for the Cloudformation Template](docs/application-composer-poc-observability.png "Application Diagram")
 
+## CloudFormation Templates
+
+This POC uses a two-stack deployment approach for better resource management and separation of concerns:
+
+### 1. S3 Deployment Stack (`cf-template-s3.yaml`)
+- **Purpose**: Creates the S3 bucket required for Lambda deployment artifacts
+- **Resources**:
+  - **S3 Bucket**: `coe-aws-obs-deployment-{region}-{account-id}`
+    - Public access blocked for security
+    - Deletion policy set to delete bucket when stack is deleted
+    - Cross-stack export for main infrastructure template
+- **Deployment**: Must be deployed first as the main template depends on it
+
+### 2. Main Infrastructure Stack (`cf-template-infra.yaml`)
+- **Purpose**: Deploys the complete observability infrastructure
+- **Dependencies**: Imports S3 bucket name from the S3 stack
+- **Resources**: All application and monitoring components (detailed below)
+
 ## Components
 
 ### 1. VPC and Networking Infrastructure
@@ -123,11 +141,24 @@ This POC demonstrates a comprehensive observability solution on AWS using CloudF
 2. Python 3.12 installed
 3. Valid AWS credentials configured
 
+### Two-Stack Deployment Process
+
+This POC uses a two-stack deployment approach:
+
+1. **S3 Stack**: Creates the deployment bucket for Lambda artifacts
+2. **Main Stack**: Deploys the complete observability infrastructure
+
 ### Deploy
 ```bash
 cd pocs/01-aws-observability
 ./scripts/deploy.sh <PROFILE_NAME> <REGION>
 ```
+
+The deployment script automatically:
+1. Deploys the S3 stack (`cf-template-s3.yaml`) first
+2. Packages and uploads the Lambda function to the S3 bucket
+3. Deploys the main infrastructure stack (`cf-template-infra.yaml`)
+4. Configures cross-stack references between the templates
 
 Where:
 - `<PROFILE_NAME>` is your AWS CLI profile name
@@ -138,20 +169,26 @@ Where:
 ./scripts/cleanup.sh <PROFILE_NAME> <REGION>
 ```
 
+The cleanup script:
+1. Deletes the main infrastructure stack
+2. Empties and deletes the S3 deployment bucket
+3. Deletes the S3 stack
+4. Verifies all resources are properly cleaned up
+
 ## Directory Structure
 
 ```
 01-aws-observability/
 ├── README.md                    # This file
 ├── infrastructure/              # CloudFormation templates
-│   ├── cf-template-s3.yaml     # S3 bucket for deployments
-│   └── cf-template-infra.yaml  # Main infrastructure
+│   ├── cf-template-s3.yaml     # S3 deployment bucket (deployed first)
+│   └── cf-template-infra.yaml  # Main infrastructure (depends on S3 stack)
 ├── lambda/                     # Lambda function code
 │   ├── lambda_function.py      # Function implementation
 │   └── requirements.txt        # Python dependencies
 ├── scripts/                    # Deployment scripts
-│   ├── deploy.sh              # Deployment script
-│   └── cleanup.sh             # Cleanup script
+│   ├── deploy.sh              # Two-stack deployment script
+│   └── cleanup.sh             # Two-stack cleanup script
 ├── docs/                      # Documentation and diagrams
 │   ├── poc-aws-obs-architecture-diagram.md
 │   ├── aws_observability_poc_diagram.png
