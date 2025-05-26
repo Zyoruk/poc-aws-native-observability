@@ -1,0 +1,36 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'POC_NAME_PLACEHOLDER POC - Main Infrastructure'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: Development
+    Description: Environment name
+    
+  ProjectName:
+    Type: String
+    Default: 02-observability-of-security
+    Description: Project name for resource naming
+
+Resources:
+  # TODO: Add your AWS resources here
+  
+  # Example S3 bucket
+  ExampleBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-${Environment}-${AWS::AccountId}-${AWS::Region}'
+      Tags:
+        - Key: POC
+          Value: 02-observability-of-security
+        - Key: Environment
+          Value: !Ref Environment
+
+Outputs:
+  # TODO: Add your outputs here
+  
+  ExampleBucketName:
+    Description: Name of the example S3 bucket
+    Value: !Ref ExampleBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-ExampleBucket'
