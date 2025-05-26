@@ -219,9 +219,9 @@ chmod +x "$REPO_ROOT/$POC_FULL_PATH/scripts/"*.sh
 
 # Create a basic CloudFormation template
 echo "☁️ Creating basic CloudFormation template..."
-cat > "$REPO_ROOT/$POC_FULL_PATH/infrastructure/cf-main.yaml" << EOF
+cat > "$REPO_ROOT/$POC_FULL_PATH/infrastructure/cf-main.yaml" << 'CFEOF'
 AWSTemplateFormatVersion: '2010-09-09'
-Description: '${POC_NAME^} POC - Main Infrastructure'
+Description: 'POC_NAME_PLACEHOLDER POC - Main Infrastructure'
 
 Parameters:
   Environment:
@@ -231,7 +231,7 @@ Parameters:
     
   ProjectName:
     Type: String
-    Default: ${POC_DIR_NAME}
+    Default: POC_DIR_NAME_PLACEHOLDER
     Description: Project name for resource naming
 
 Resources:
@@ -241,10 +241,10 @@ Resources:
   ExampleBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub '\${ProjectName}-\${Environment}-\${AWS::AccountId}-\${AWS::Region}'
+      BucketName: !Sub '${ProjectName}-${Environment}-${AWS::AccountId}-${AWS::Region}'
       Tags:
         - Key: POC
-          Value: ${POC_DIR_NAME}
+          Value: POC_DIR_NAME_PLACEHOLDER
         - Key: Environment
           Value: !Ref Environment
 
@@ -255,8 +255,30 @@ Outputs:
     Description: Name of the example S3 bucket
     Value: !Ref ExampleBucket
     Export:
-      Name: !Sub '\${AWS::StackName}-ExampleBucket'
-EOF
+      Name: !Sub '${AWS::StackName}-ExampleBucket'
+CFEOF
+
+# Replace placeholders in the CloudFormation template
+sed -i.bak "s/POC_NAME_PLACEHOLDER/${POC_NAME^}/g" "$REPO_ROOT/$POC_FULL_PATH/infrastructure/cf-main.yaml"
+if [ $? -ne 0 ]; then
+    echo "❌ Error: Failed to replace POC_NAME_PLACEHOLDER in cf-main.yaml"
+    exit 1
+fi
+if grep -q "POC_NAME_PLACEHOLDER" "$REPO_ROOT/$POC_FULL_PATH/infrastructure/cf-main.yaml"; then
+    echo "❌ Error: POC_NAME_PLACEHOLDER was not replaced in cf-main.yaml"
+    exit 1
+fi
+
+sed -i.bak "s/POC_DIR_NAME_PLACEHOLDER/${POC_DIR_NAME}/g" "$REPO_ROOT/$POC_FULL_PATH/infrastructure/cf-main.yaml"
+if [ $? -ne 0 ]; then
+    echo "❌ Error: Failed to replace POC_DIR_NAME_PLACEHOLDER in cf-main.yaml"
+    exit 1
+fi
+if grep -q "POC_DIR_NAME_PLACEHOLDER" "$REPO_ROOT/$POC_FULL_PATH/infrastructure/cf-main.yaml"; then
+    echo "❌ Error: POC_DIR_NAME_PLACEHOLDER was not replaced in cf-main.yaml"
+    exit 1
+fi
+rm "$REPO_ROOT/$POC_FULL_PATH/infrastructure/cf-main.yaml.bak"
 
 echo ""
 echo "✅ POC '$POC_DIR_NAME' created successfully!"
