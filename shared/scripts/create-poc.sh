@@ -260,7 +260,24 @@ CFEOF
 
 # Replace placeholders in the CloudFormation template
 sed -i.bak "s/POC_NAME_PLACEHOLDER/${POC_NAME^}/g" "$REPO_ROOT/$POC_FULL_PATH/infrastructure/cf-main.yaml"
+if [ $? -ne 0 ]; then
+    echo "❌ Error: Failed to replace POC_NAME_PLACEHOLDER in cf-main.yaml"
+    exit 1
+fi
+if grep -q "POC_NAME_PLACEHOLDER" "$REPO_ROOT/$POC_FULL_PATH/infrastructure/cf-main.yaml"; then
+    echo "❌ Error: POC_NAME_PLACEHOLDER was not replaced in cf-main.yaml"
+    exit 1
+fi
+
 sed -i.bak "s/POC_DIR_NAME_PLACEHOLDER/${POC_DIR_NAME}/g" "$REPO_ROOT/$POC_FULL_PATH/infrastructure/cf-main.yaml"
+if [ $? -ne 0 ]; then
+    echo "❌ Error: Failed to replace POC_DIR_NAME_PLACEHOLDER in cf-main.yaml"
+    exit 1
+fi
+if grep -q "POC_DIR_NAME_PLACEHOLDER" "$REPO_ROOT/$POC_FULL_PATH/infrastructure/cf-main.yaml"; then
+    echo "❌ Error: POC_DIR_NAME_PLACEHOLDER was not replaced in cf-main.yaml"
+    exit 1
+fi
 rm "$REPO_ROOT/$POC_FULL_PATH/infrastructure/cf-main.yaml.bak"
 
 echo ""
