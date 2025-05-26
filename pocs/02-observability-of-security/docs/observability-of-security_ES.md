@@ -206,7 +206,7 @@ Comprobar que:
 
 ### 7.1 Diagrama de Arquitectura
 
-```
+```mermaid
 flowchart TB
     subgraph AWS_Account
         CloudTrail -->|Logs| CloudWatchLogs
